@@ -158,12 +158,21 @@ source venv/bin/activate
 # Run all unit tests
 pytest tests/unit -v
 
-# Run tests with coverage report
-pytest --cov=core --cov=platform --cov=integrations --cov-report=term
+# Run tests with coverage report (terminal output)
+pytest --cov=core --cov=integrations --cov-report=term
 
 # Generate HTML coverage report
-pytest --cov=core --cov-report=html
+pytest --cov=core --cov=integrations --cov-report=html
 open htmlcov/index.html
+
+# Run integration tests
+pytest tests/integration -v
+
+# Run all tests (unit + integration)
+pytest -v
+
+# Run tests with verbose output and coverage
+pytest --cov=core --cov=integrations --cov-report=term -v
 ```
 
 ## Integration Testing

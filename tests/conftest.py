@@ -53,3 +53,14 @@ def mock_video_capture():
     mock_cap.read.return_value = (True, np.zeros((480, 640, 3), dtype=np.uint8))
     mock_cap.release.return_value = None
     return mock_cap
+
+
+@pytest.fixture
+def mock_rtsp_camera(sample_config, mock_video_capture):
+    """Create mock RTSPCameraClient for testing."""
+    from unittest.mock import patch
+    from integrations.rtsp_client import RTSPCameraClient
+
+    with patch('cv2.VideoCapture', return_value=mock_video_capture):
+        camera = RTSPCameraClient(sample_config)
+        return camera
