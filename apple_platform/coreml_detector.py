@@ -5,6 +5,7 @@ CoreML object detection models optimized for Apple Silicon hardware.
 """
 
 import logging
+import re
 from typing import List, Optional
 
 import coremltools
@@ -165,10 +166,13 @@ class CoreMLDetector:
             detections = self._postprocess_detections(raw_outputs, frame.shape)
 
             # Apply confidence filtering
-            filtered_detections = [
+            confidence_filtered = [
                 det for det in detections
                 if det.confidence >= self.config.min_object_confidence
             ]
+
+            # Apply blacklist filtering
+            filtered_detections = self._filter_blacklisted_objects(confidence_filtered)
 
             # Log performance
             inference_time = time.time() - start_time
@@ -375,3 +379,43 @@ class CoreMLDetector:
             x, y, w, h = width // 4, height // 4, width // 2, height // 2
 
         return BoundingBox(x=x, y=y, width=w, height=h)
+
+    def _filter_blacklisted_objects(self, detections: List[DetectedObject]) -> List[DetectedObject]:
+        """Filter out detected objects that match the blacklist.
+
+        Args:
+            detections: List of detected objects to filter
+
+        Returns:
+            Filtered list of detected objects
+        """
+        if not self.config.blacklist_objects:
+            return detections
+
+        filtered_detections = []
+        blacklisted_labels = []
+
+        for detection in detections:
+            # Case-insensitive exact word matching
+            detection_label_lower = detection.label.lower()
+
+            is_blacklisted = False
+            for blacklist_item in self.config.blacklist_objects:
+                blacklist_item_lower = blacklist_item.lower()
+
+                # Exact word boundary matching (not substring)
+                # Use word boundaries to prevent "cat" matching "cattle"
+                if re.search(r'\b' + re.escape(blacklist_item_lower) + r'\b', detection_label_lower):
+                    is_blacklisted = True
+                    blacklisted_labels.append(detection.label)
+                    break
+
+            if not is_blacklisted:
+                filtered_detections.append(detection)
+
+        # Log filtered objects at DEBUG level
+        if blacklisted_labels:
+            unique_labels = list(set(blacklisted_labels))
+            self.logger.debug(f"Filtered {len(blacklisted_labels)} blacklisted objects: {unique_labels}")
+
+        return filtered_detections
