@@ -4,7 +4,6 @@ This module provides the FrameSampler class for configurable frame sampling
 and the ProcessingPipeline class for orchestrating the complete video processing workflow.
 """
 
-import logging
 import signal
 import sys
 from typing import Dict, Optional
@@ -13,10 +12,11 @@ import numpy as np
 
 from core.config import SystemConfig
 from core.exceptions import VideoRecognitionError
+from core.logging_config import get_logger
 from core.motion_detector import MotionDetector
 from integrations.rtsp_client import RTSPCameraClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class FrameSampler:
@@ -122,6 +122,7 @@ class ProcessingPipeline:
 
                 if has_motion:
                     self.metrics["frames_with_motion"] += 1
+                    logger.info(f"Motion detected: frame={self.metrics['frames_with_motion']}, confidence={confidence:.3f}")
 
                     # Apply sampling to motion-triggered frames
                     if self.frame_sampler.should_process(self.metrics["frames_with_motion"]):
@@ -132,9 +133,9 @@ class ProcessingPipeline:
                         self.metrics["frames_processed"] += 1
 
                         logger.debug(
-                            f"Processed frame {self.metrics['frames_with_motion']} "
-                            f"(sampled {self.metrics['frames_sampled']}, "
-                            f"motion confidence: {confidence:.3f})"
+                            f"Frame processed: count={self.metrics['frames_with_motion']}, "
+                            f"sampled={self.metrics['frames_sampled']}, "
+                            f"motion_confidence={confidence:.3f}, sampling_decision=True"
                         )
 
         except Exception as e:
@@ -142,18 +143,18 @@ class ProcessingPipeline:
             raise VideoRecognitionError(f"Processing pipeline error: {e}") from e
 
         finally:
-            # Log final metrics
-            logger.info("Processing pipeline shutdown - Final metrics:")
-            logger.info(f"  Total frames captured: {self.metrics['total_frames_captured']}")
-            logger.info(f"  Frames with motion: {self.metrics['frames_with_motion']}")
-            logger.info(f"  Frames sampled: {self.metrics['frames_sampled']}")
-            logger.info(f"  Frames processed: {self.metrics['frames_processed']}")
+            # Log final metrics summary
+            logger.info("Metrics summary: "
+                       f"frames_captured={self.metrics['total_frames_captured']}, "
+                       f"motion_detected={self.metrics['frames_with_motion']}, "
+                       f"frames_sampled={self.metrics['frames_sampled']}, "
+                       f"frames_processed={self.metrics['frames_processed']}")
 
-            # Calculate percentages
+            # Calculate and log percentages
             if self.metrics["total_frames_captured"] > 0:
                 motion_rate = (self.metrics["frames_with_motion"] / self.metrics["total_frames_captured"]) * 100
-                logger.info(f"  Motion detection rate: {motion_rate:.1f}%")
+                logger.info(f"Motion detection rate: {motion_rate:.1f}%")
 
             if self.metrics["frames_with_motion"] > 0:
                 sample_rate = (self.metrics["frames_sampled"] / self.metrics["frames_with_motion"]) * 100
-                logger.info(f"  Sampling effectiveness: {sample_rate:.1f}%")
+                logger.info(f"Sampling effectiveness: {sample_rate:.1f}%")

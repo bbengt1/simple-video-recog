@@ -5,14 +5,13 @@ background subtraction algorithm, which handles lighting changes and shadows
 effectively.
 """
 
-import logging
-
 import cv2
 import numpy as np
 
 from core.config import SystemConfig
+from core.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MotionDetector:
@@ -50,10 +49,7 @@ class MotionDetector:
             history=500, varThreshold=16, detectShadows=True
         )
 
-        logger.info(
-            f"MotionDetector initialized with threshold: {self.motion_threshold}",
-            extra={"motion_threshold": self.motion_threshold},
-        )
+        logger.info(f"Motion detector initialized: threshold={self.motion_threshold}")
 
     def detect_motion(
         self, frame: np.ndarray
@@ -91,6 +87,10 @@ class MotionDetector:
 
         # Determine if motion threshold exceeded
         has_motion = confidence >= self.motion_threshold
+
+        # Log motion detection results at DEBUG level
+        if has_motion:
+            logger.debug(f"Motion detected: confidence={confidence:.3f}, threshold={self.motion_threshold}")
 
         return has_motion, confidence, fg_mask
 
