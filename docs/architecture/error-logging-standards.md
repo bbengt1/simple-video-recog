@@ -71,4 +71,3 @@ def process_frame(self, frame: np.ndarray) -> Optional[Event]:
 - **CRITICAL**: Fatal errors requiring shutdown (database corruption, config invalid)
 
 ---
-

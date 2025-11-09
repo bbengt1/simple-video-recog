@@ -1,0 +1,56 @@
+# Camera Configuration
+# RTSP stream URL with authentication
+# Format: rtsp://username:password@ip:port/stream_path
+camera_rtsp_url: "rtsp://admin:password@192.168.1.100:554/stream1"
+camera_id: "front_door"
+
+# Motion Detection
+# Motion detection sensitivity (0.0-1.0)
+# Lower values = more sensitive, Higher values = less sensitive
+motion_threshold: 0.5
+
+# Frames per second to process during motion events
+# Valid range: 1-30
+frame_sample_rate: 5
+
+# Object Detection (CoreML)
+# Path to CoreML model file (will be downloaded during setup)
+coreml_model_path: "models/yolov8n.mlmodel"
+
+# Object labels to ignore/filter out
+# Common examples: bird, cat, dog, car, etc.
+blacklist_objects:
+  - bird
+  - cat
+
+# Minimum confidence score for detected objects (0.0-1.0)
+min_object_confidence: 0.5
+
+# LLM Configuration (Ollama)
+# Ollama API endpoint (default: http://localhost:11434)
+ollama_base_url: "http://localhost:11434"
+
+# LLM model for semantic descriptions
+# Options: llava:7b, moondream:latest
+ollama_model: "llava:7b"
+
+# LLM request timeout in seconds (1-60)
+llm_timeout: 10
+
+# Storage Configuration
+# SQLite database file path
+db_path: "data/events.db"
+
+# Maximum storage limit in GB
+max_storage_gb: 4.0
+
+# Minimum days to retain events before cleanup
+min_retention_days: 7
+
+# Logging Configuration
+# Logging verbosity level
+# Options: DEBUG, INFO, WARNING, ERROR
+log_level: "INFO"
+
+# Metrics collection interval in seconds (minimum: 10)
+metrics_interval: 60
