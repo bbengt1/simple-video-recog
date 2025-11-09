@@ -5,6 +5,7 @@ This script initializes the system, performs health checks, and starts
 the video processing pipeline.
 """
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -16,21 +17,45 @@ from core.config import SystemConfig, load_config
 from core.logging_config import setup_logging
 from core.health_check import HealthChecker
 from core.motion_detector import MotionDetector
+from core.pipeline import FrameSampler, ProcessingPipeline
 from integrations.rtsp_client import RTSPCameraClient
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
+def parse_arguments():
+    """Parse command-line arguments.
+
+    Returns:
+        Parsed arguments namespace
+    """
+    parser = argparse.ArgumentParser(
+        description="Local Video Recognition System - Motion detection with CoreML object detection and Ollama LLM semantic understanding",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py config.yaml                    # Run with config file
+  python main.py config/config.yaml             # Run with full path
+        """
+    )
+
+    parser.add_argument(
+        "config_file",
+        help="Path to YAML configuration file"
+    )
+
+    return parser.parse_args()
+
+
 def main():
     """Main application entry point."""
     try:
+        # Parse command-line arguments
+        args = parse_arguments()
+
         # Load configuration
-        if len(sys.argv) > 1:
-            config_path = sys.argv[1]
-        else:
-            config_path = "config/config.yaml"
-        config = load_config(config_path)
+        config = load_config(args.config_file)
 
         # Setup logging
         setup_logging(config)
@@ -40,6 +65,7 @@ def main():
         # Initialize components
         rtsp_client = RTSPCameraClient(config)
         motion_detector = MotionDetector(config)
+        frame_sampler = FrameSampler(config)
 
         # Perform health checks
         health_checker = HealthChecker(config, rtsp_client, motion_detector)
@@ -51,17 +77,21 @@ def main():
             )
             sys.exit(1)
 
-        # TODO: Start processing pipeline (Story 1.7)
-        logger.info("System initialization complete. Processing pipeline would start here.")
+        # Initialize and start processing pipeline
+        pipeline = ProcessingPipeline(
+            rtsp_client=rtsp_client,
+            motion_detector=motion_detector,
+            frame_sampler=frame_sampler,
+            config=config
+        )
 
-        # For now, just keep the system running
-        try:
-            while True:
-                pass  # Replace with actual processing loop in Story 1.7
-        except KeyboardInterrupt:
-            logger.info("Shutdown requested by user")
-            rtsp_client.disconnect()
-            logger.info("System shutdown complete")
+        logger.info("System initialization complete. Starting processing pipeline...")
+
+        # Start the processing pipeline (runs until shutdown signal)
+        pipeline.run()
+
+        # Pipeline completed (shutdown signal received)
+        logger.info("Processing pipeline stopped. System shutdown complete.")
 
     except Exception as e:
         logger.error(f"Fatal error during startup: {e}", exc_info=True)

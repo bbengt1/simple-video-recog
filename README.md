@@ -83,6 +83,39 @@ nano config/config.yaml
 
 **Important:** Update the `camera_rtsp_url` field with your actual RTSP camera URL and credentials.
 
+## Quick Start
+
+Once you've completed the setup steps above, you can start the video recognition system:
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Start the system
+python main.py config/config.yaml
+```
+
+The system will:
+1. Load and validate your configuration
+2. Perform startup health checks
+3. Connect to your RTSP camera
+4. Begin monitoring for motion events
+5. Log detected events to console
+
+**To stop the system:** Press `Ctrl+C` for graceful shutdown.
+
+**Expected output:**
+```
+[INFO] Starting video recognition system...
+[INFO] Configuration loaded successfully
+[INFO] Connected to RTSP stream: front_door
+[INFO] Motion detector initialized
+[INFO] System initialization complete. Starting processing pipeline...
+[INFO] Starting video processing pipeline
+[INFO] Motion detected: frame=1, confidence=0.234
+...
+```
+
 ## Configuration Guide
 
 The `config/config.yaml` file contains all system settings. Key parameters:
