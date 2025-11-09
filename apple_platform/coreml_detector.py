@@ -5,13 +5,15 @@ CoreML object detection models optimized for Apple Silicon hardware.
 """
 
 import logging
-from typing import Optional
+from typing import List, Optional
 
 import coremltools
+import cv2
 import numpy as np
 
 from core.config import SystemConfig
 from core.exceptions import CoreMLLoadError
+from core.models import BoundingBox, DetectedObject
 
 
 class CoreMLDetector:
@@ -133,3 +135,243 @@ class CoreMLDetector:
             error_msg = f"Failed to load CoreML model from {model_path}: {str(e)}"
             self.logger.error(error_msg)
             raise CoreMLLoadError(error_msg)
+
+    def detect_objects(self, frame: np.ndarray) -> List[DetectedObject]:
+        """Run object detection inference on a frame.
+
+        Args:
+            frame: Input frame as numpy array (BGR format from OpenCV)
+
+        Returns:
+            List of detected objects with labels, confidence scores, and bounding boxes
+
+        Raises:
+            RuntimeError: If model is not loaded
+        """
+        if not self.is_loaded or self.model is None:
+            raise RuntimeError("CoreML model not loaded. Call load_model() first.")
+
+        import time
+        start_time = time.time()
+
+        try:
+            # Preprocess frame
+            processed_frame = self._preprocess_frame(frame)
+
+            # Run inference
+            raw_outputs = self.model.predict({'input': processed_frame})
+
+            # Post-process results
+            detections = self._postprocess_detections(raw_outputs, frame.shape)
+
+            # Apply confidence filtering
+            filtered_detections = [
+                det for det in detections
+                if det.confidence >= self.config.min_object_confidence
+            ]
+
+            # Log performance
+            inference_time = time.time() - start_time
+            self.logger.info(f"Object detection completed in {inference_time:.3f}s "
+                           f"({len(filtered_detections)} objects detected)")
+
+            if inference_time > 0.1:  # 100ms threshold
+                self.logger.warning(f"Inference time {inference_time:.3f}s exceeds 100ms target")
+
+            return filtered_detections
+
+        except Exception as e:
+            self.logger.error(f"Object detection failed: {str(e)}")
+            raise
+
+    def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:
+        """Preprocess frame for CoreML inference.
+
+        Args:
+            frame: Input frame (BGR format)
+
+        Returns:
+            Preprocessed frame ready for inference
+        """
+        # Convert BGR to RGB
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # Get target input shape from model metadata
+        target_shape = self.model_metadata.get('input_shape') if self.model_metadata else None
+        if target_shape and len(target_shape) >= 3:
+            # Assume shape is (height, width, channels) or (channels, height, width)
+            if len(target_shape) == 3:
+                target_height, target_width = target_shape[0], target_shape[1]
+            else:
+                # Handle other formats, default to 416x416
+                target_height, target_width = 416, 416
+        else:
+            # Default to common object detection size
+            target_height, target_width = 416, 416
+
+        # Resize frame
+        resized_frame = cv2.resize(rgb_frame, (target_width, target_height))
+
+        # Convert to float32 and normalize to [0, 1]
+        normalized_frame = resized_frame.astype(np.float32) / 255.0
+
+        return normalized_frame
+
+    def _postprocess_detections(self, raw_outputs: dict, original_frame_shape: tuple) -> List[DetectedObject]:
+        """Post-process raw model outputs into DetectedObject instances.
+
+        Args:
+            raw_outputs: Raw outputs from CoreML model
+            original_frame_shape: Shape of original input frame (height, width, channels)
+
+        Returns:
+            List of detected objects
+        """
+        detections = []
+
+        # Parse model outputs - this is model-specific, using common YOLO-style format
+        # Assume outputs contain 'coordinates' and 'confidence' or similar
+        # This is a simplified implementation - real models may have different output formats
+
+        # For now, create mock detections for testing
+        # In real implementation, this would parse actual model outputs
+        if 'coordinates' in raw_outputs and 'confidence' in raw_outputs:
+            coords = raw_outputs['coordinates']
+            confs = raw_outputs['confidence']
+
+            # Apply Non-Maximum Suppression (simplified)
+            # In real implementation, would use proper NMS algorithm
+            nms_detections = self._apply_nms(coords, confs)
+
+            for detection in nms_detections:
+                # Convert normalized coordinates back to original frame coordinates
+                bbox = self._convert_bbox_to_original(
+                    detection['bbox'],
+                    original_frame_shape
+                )
+
+                detected_obj = DetectedObject(
+                    label=detection['label'],
+                    confidence=detection['confidence'],
+                    bbox=bbox
+                )
+                detections.append(detected_obj)
+
+        return detections
+
+    def _apply_nms(self, coordinates: np.ndarray, confidences: np.ndarray,
+                   iou_threshold: float = 0.5) -> List[dict]:
+        """Apply Non-Maximum Suppression to filter overlapping detections.
+
+        Args:
+            coordinates: Bounding box coordinates [x, y, w, h] format
+            confidences: Confidence scores
+            iou_threshold: IoU threshold for suppression
+
+        Returns:
+            Filtered detections
+        """
+        # Simplified NMS implementation
+        detections = []
+
+        # Sort by confidence (descending)
+        indices = np.argsort(confidences)[::-1]
+
+        while len(indices) > 0:
+            # Pick the detection with highest confidence
+            best_idx = indices[0]
+            best_coord = coordinates[best_idx]
+
+            # Convert [x, y, w, h] to [x1, y1, x2, y2] for IoU calculation
+            best_bbox = [
+                best_coord[0], best_coord[1],  # x1, y1
+                best_coord[0] + best_coord[2], best_coord[1] + best_coord[3]  # x2, y2
+            ]
+
+            best_detection = {
+                'bbox': best_coord,
+                'confidence': confidences[best_idx],
+                'label': 'person'  # Mock label - would come from model
+            }
+            detections.append(best_detection)
+
+            # Remove overlapping detections
+            remaining_indices = []
+            for idx in indices[1:]:
+                coord = coordinates[idx]
+                # Convert to [x1, y1, x2, y2] format
+                bbox = [
+                    coord[0], coord[1],  # x1, y1
+                    coord[0] + coord[2], coord[1] + coord[3]  # x2, y2
+                ]
+
+                # Calculate IoU
+                iou = self._calculate_iou(np.array(best_bbox), np.array(bbox))
+                if iou < iou_threshold:
+                    remaining_indices.append(idx)
+
+            indices = np.array(remaining_indices)
+
+        return detections
+
+    def _calculate_iou(self, bbox1: np.ndarray, bbox2: np.ndarray) -> float:
+        """Calculate Intersection over Union of two bounding boxes.
+
+        Args:
+            bbox1: First bounding box [x1, y1, x2, y2]
+            bbox2: Second bounding box [x1, y1, x2, y2]
+
+        Returns:
+            IoU value between 0 and 1
+        """
+        # Convert to x1, y1, x2, y2 format if needed
+        if len(bbox1) == 4:
+            x1_1, y1_1, x2_1, y2_1 = bbox1
+            x1_2, y1_2, x2_2, y2_2 = bbox2
+        else:
+            # Handle other formats
+            return 0.0
+
+        # Calculate intersection
+        x1_inter = max(x1_1, x1_2)
+        y1_inter = max(y1_1, y1_2)
+        x2_inter = min(x2_1, x2_2)
+        y2_inter = min(y2_1, y2_2)
+
+        if x2_inter <= x1_inter or y2_inter <= y1_inter:
+            return 0.0
+
+        inter_area = (x2_inter - x1_inter) * (y2_inter - y1_inter)
+
+        # Calculate union
+        bbox1_area = (x2_1 - x1_1) * (y2_1 - y1_1)
+        bbox2_area = (x2_2 - x1_2) * (y2_2 - y1_2)
+        union_area = bbox1_area + bbox2_area - inter_area
+
+        return inter_area / union_area if union_area > 0 else 0.0
+
+    def _convert_bbox_to_original(self, bbox: np.ndarray, original_shape: tuple) -> BoundingBox:
+        """Convert normalized bounding box coordinates to original frame coordinates.
+
+        Args:
+            bbox: Normalized bounding box [x, y, width, height] or [x1, y1, x2, y2]
+            original_shape: Original frame shape (height, width, channels)
+
+        Returns:
+            BoundingBox in original coordinates
+        """
+        height, width = original_shape[:2]
+
+        if len(bbox) == 4:
+            # Assume [x, y, width, height] format (normalized)
+            x_norm, y_norm, w_norm, h_norm = bbox
+
+            x = int(x_norm * width)
+            y = int(y_norm * height)
+            w = int(w_norm * width)
+            h = int(h_norm * height)
+        else:
+            # Handle other formats, default to center of frame
+            x, y, w, h = width // 4, height // 4, width // 2, height // 2
+
+        return BoundingBox(x=x, y=y, width=w, height=h)
