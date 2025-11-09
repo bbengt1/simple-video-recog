@@ -3,7 +3,7 @@
 **Responsibility:** Analyzes frames to detect motion using background subtraction algorithm. Only frames with significant motion trigger downstream processing.
 
 **Key Interfaces:**
-- `detect_motion(frame: np.ndarray) -> tuple[bool, float]`: Returns (has_motion, confidence_score)
+- `detect_motion(frame: np.ndarray) -> tuple[bool, float, np.ndarray]`: Returns (has_motion, confidence_score, motion_mask)
 - `reset_background() -> None`: Reset background model (called when camera moves)
 
 **Dependencies:**
