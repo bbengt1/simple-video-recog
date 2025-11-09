@@ -1,0 +1,7 @@
+# Technical Summary
+
+The Local Video Recognition System is a privacy-first, macOS-native application that processes RTSP camera streams locally on Apple Silicon hardware. The system employs a sequential processing pipeline architecture where each frame captured from an RTSP camera undergoes motion detection, object recognition via CoreML (optimized for Apple Neural Engine), and semantic analysis through a local Ollama LLM instance. All processing occurs on-device with zero cloud dependencies, ensuring complete data privacy.
+
+Phase 1 delivers a CLI-based application with a monolithic Python backend focused on the core processing pipeline and data persistence. Phase 2 introduces a modular architecture with a separate FastAPI web server that provides REST and WebSocket APIs, enabling a vanilla JavaScript web dashboard for real-time event monitoring and historical analysis. The frontend communicates with the backend via HTTP APIs while maintaining complete separation of concerns.
+
+The system integrates with two external local services: Ollama (local LLM inference via HTTP API) and RTSP cameras (via OpenCV's RTSP client). All event data is persisted to SQLite with dual-format logging (JSON + plaintext) and stored locally with FIFO rotation to maintain a 4GB storage limit. The architecture is designed to run 24/7 on Mac Mini or Mac Studio hardware with automatic recovery from transient failures.
