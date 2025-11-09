@@ -27,3 +27,20 @@ class RTSPConnectionError(VideoRecognitionError):
     """
 
     pass
+
+
+class CoreMLLoadError(VideoRecognitionError):
+    """CoreML model loading failed.
+
+    Raised when the system cannot load or validate a CoreML model file.
+    This includes file not found, corrupted models, incompatible formats,
+    or models that cannot run on the available hardware.
+
+    Examples:
+        - Model file not found at specified path
+        - Corrupted or invalid .mlmodel file
+        - Model incompatible with Apple Neural Engine
+        - Missing required model metadata
+    """
+
+    pass

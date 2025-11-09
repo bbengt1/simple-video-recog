@@ -64,11 +64,76 @@ ollama serve
 ollama pull llava:7b
 ```
 
-### 5. Download CoreML Model
+### 5. Download CoreML Models
+
+The system uses CoreML models optimized for Apple's Neural Engine to perform fast, on-device object detection.
+
+#### Recommended Models
+
+**YOLOv3-Tiny (Recommended for MVP):**
+- **Performance:** ~30-50ms inference on M1/M2
+- **Accuracy:** Good balance of speed and detection quality
+- **Size:** ~34MB
+- **Objects:** Detects 80 COCO classes (person, car, dog, etc.)
+
+**YOLOv8n (Alternative):**
+- **Performance:** ~20-40ms inference on M1/M2
+- **Accuracy:** Better detection quality than YOLOv3-Tiny
+- **Size:** ~22MB
+- **Objects:** Detects 80 COCO classes
+
+#### Obtaining CoreML Models
+
+**Option 1: Apple's Model Gallery (Recommended)**
+Visit Apple's CoreML model gallery and download pre-converted models:
+- [Apple CoreML Models](https://developer.apple.com/machine-learning/models/)
+- Search for "YOLO" or "Object Detection"
+- Download the .mlmodel file and place in `models/` directory
+
+**Option 2: Convert from PyTorch/TensorFlow**
+If you have custom-trained models, convert them using coremltools:
 
 ```bash
-# Download YOLO CoreML model (placeholder - actual script in Story 4.9)
-# scripts/download_models.sh
+# Install coremltools (already included in requirements.txt)
+pip install coremltools
+
+# Convert YOLOv5 PyTorch model (example)
+import coremltools as ct
+import torch
+
+# Load your PyTorch model
+model = torch.load('yolov5s.pt')['model']
+
+# Convert to CoreML
+mlmodel = ct.convert(model, inputs=[ct.ImageType()])
+mlmodel.save('models/yolov5s.mlmodel')
+```
+
+**Option 3: Download Pre-converted Models**
+Community-converted models are available on GitHub:
+- [YOLOv3-Tiny CoreML](https://github.com/hollance/YOLO-CoreML-MPSNNGraph)
+- [YOLOv8 CoreML](https://github.com/john-rocky/CoreML-Models)
+
+#### Model Requirements
+
+- **Format:** .mlmodel file (CoreML format)
+- **Compatibility:** Must support Apple's Neural Engine for optimal performance
+- **Input:** Single image input (typically 416x416 or 640x640)
+- **Output:** Object detection results (bounding boxes, classes, confidence scores)
+- **Optimization:** Use models with `compute_unit = "ALL"` for Neural Engine support
+
+#### Model Validation
+
+After downloading a model, the system will automatically validate:
+- ✅ Neural Engine compatibility
+- ⚠️  CPU/GPU fallback warning (if not ANE-compatible)
+- 📊 Warm-up inference timing (<100ms target)
+
+**Example successful load:**
+```
+[INFO] ✓ CoreML model loaded: YOLOv3-Tiny (ANE-compatible)
+[INFO] Model input shape: (1, 416, 416, 3)
+[INFO] Model warm-up completed in 0.034s
 ```
 
 ### 6. Configure System
