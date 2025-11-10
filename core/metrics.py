@@ -1,5 +1,6 @@
 """Performance metrics collection and logging for the video recognition system."""
 
+import sys
 import time
 from collections import deque
 from pathlib import Path
@@ -12,6 +13,18 @@ from pydantic import BaseModel, Field
 from .config import SystemConfig
 from .logging_config import get_logger
 from .version import get_version_info
+
+# ANSI escape codes for terminal control
+ANSI_CLEAR_SCREEN = "\033[2J"
+ANSI_HOME = "\033[H"
+ANSI_CLEAR_LINE = "\033[K"
+ANSI_SAVE_CURSOR = "\033[s"
+ANSI_RESTORE_CURSOR = "\033[u"
+
+# Display mode constants
+DISPLAY_MODE_FULL = "full"
+DISPLAY_MODE_COMPACT = "compact"
+COMPACT_MODE_THRESHOLD = 300  # Switch to compact mode after 5 minutes (300 seconds)
 
 
 class MetricsSnapshot(BaseModel):
@@ -105,6 +118,29 @@ class MetricsCollector:
         self.metrics_log_path = Path("logs/metrics.json")
         self.metrics_log_path.parent.mkdir(parents=True, exist_ok=True)
         self.last_log_time = 0.0
+
+        # Display mode tracking
+        self.display_mode = DISPLAY_MODE_FULL
+        self.first_display = True  # Track if this is the first time displaying metrics
+        self.use_ansi = self._check_ansi_support()
+
+    def _check_ansi_support(self) -> bool:
+        """Check if the terminal supports ANSI escape codes.
+
+        Returns:
+            True if ANSI codes are supported, False otherwise
+        """
+        # Check if stdout is a TTY (not redirected to file/pipe)
+        if not sys.stdout.isatty():
+            return False
+
+        # Check for common terminals that support ANSI
+        import os
+        term = os.environ.get('TERM', '')
+        if term in ('dumb', ''):
+            return False
+
+        return True
 
     def increment_counter(self, metric_name: str) -> None:
         """Increment a counter metric.
@@ -275,7 +311,7 @@ class MetricsCollector:
 
         # Log warning if overhead is too high
         if overhead_percent > 1.0:
-            self.logger.warning(".2f")
+            self.logger.warning(f"Metrics collection overhead too high: {overhead_percent:.2f}%")
 
         return snapshot
 
@@ -312,53 +348,143 @@ class MetricsCollector:
             return True
         return False
 
+    def _get_nfr_indicator(self, value: float, target: float, warning_threshold: float = 0.8) -> str:
+        """Get NFR indicator based on value vs target.
+
+        Args:
+            value: Current metric value
+            target: Target threshold value
+            warning_threshold: Percentage of target that triggers warning (default 0.8 = 80%)
+
+        Returns:
+            Status indicator: ✓ (good), ⚠ (warning), ✗ (failed)
+        """
+        if value <= target:
+            return "✓"
+        elif value <= target / warning_threshold:
+            return "⚠"
+        else:
+            return "✗"
+
+    def _get_compact_display(self, snapshot: 'MetricsSnapshot') -> str:
+        """Get compact formatted display for long-running sessions.
+
+        Args:
+            snapshot: Metrics snapshot to display
+
+        Returns:
+            Compact formatted string with key metrics only
+        """
+        # Format uptime
+        uptime_seconds = time.time() - self.system_start_time
+        if uptime_seconds < 3600:
+            uptime_str = f"{uptime_seconds/60:.0f}m"
+        else:
+            hours = int(uptime_seconds // 3600)
+            minutes = int((uptime_seconds % 3600) // 60)
+            uptime_str = f"{hours}h{minutes}m"
+
+        # NFR indicators
+        coreml_indicator = self._get_nfr_indicator(snapshot.coreml_inference_avg, 100.0)
+        llm_indicator = self._get_nfr_indicator(snapshot.llm_inference_avg * 1000, 2000.0)
+        cpu_indicator = "✓" if snapshot.cpu_usage_avg < 60 else ("⚠" if snapshot.cpu_usage_avg < 80 else "✗")
+
+        # Compact single-line format
+        compact_line = (
+            f"[{time.strftime('%H:%M:%S')}] "
+            f"up:{uptime_str} | "
+            f"frames:{snapshot.frames_processed:,} "
+            f"events:{snapshot.events_created:,} | "
+            f"CoreML:{coreml_indicator}{snapshot.coreml_inference_avg:.0f}ms "
+            f"LLM:{llm_indicator}{snapshot.llm_inference_avg:.1f}s | "
+            f"CPU:{cpu_indicator}{snapshot.cpu_usage_avg:.0f}% "
+            f"MEM:{snapshot.memory_usage_gb:.1f}GB"
+        )
+
+        return compact_line
+
     def get_status_display(self) -> str:
         """Get formatted status display string for console output.
+
+        Automatically switches between full and compact mode after 5 minutes.
+        Uses ANSI escape codes for in-place update when terminal supports it.
 
         Returns:
             Formatted string with key metrics
         """
         snapshot = self.collect()
 
-        # Format uptime
+        # Check if we should switch to compact mode (after 5 minutes)
         uptime_seconds = time.time() - self.system_start_time
-        uptime_str = ""
-        if uptime_seconds < 60:
-            uptime_str = ".0f"
-        elif uptime_seconds < 3600:
-            uptime_str = ".0f"
+        if uptime_seconds >= COMPACT_MODE_THRESHOLD and self.display_mode == DISPLAY_MODE_FULL:
+            self.display_mode = DISPLAY_MODE_COMPACT
+            self.logger.info("Switched to compact metrics display mode")
+
+        # Use compact display if in compact mode
+        if self.display_mode == DISPLAY_MODE_COMPACT:
+            display_str = self._get_compact_display(snapshot)
         else:
-            hours = int(uptime_seconds // 3600)
-            minutes = int((uptime_seconds % 3600) // 60)
-            uptime_str = f"{hours}h {minutes}m"
+            # Full display mode
+            # Format uptime
+            uptime_str = ""
+            if uptime_seconds < 60:
+                uptime_str = f"{uptime_seconds:.0f}s"
+            elif uptime_seconds < 3600:
+                uptime_str = f"{uptime_seconds/60:.0f}m"
+            else:
+                hours = int(uptime_seconds // 3600)
+                minutes = int((uptime_seconds % 3600) // 60)
+                uptime_str = f"{hours}h {minutes}m"
 
-        lines = [
-            "├─────────────────────────────────────────────────────────────────┤",
-            f"│ Runtime Metrics - {time.strftime('%Y-%m-%d %H:%M:%S')} (uptime: {uptime_str})     │",
-            "├─────────────────────────────────────────────────────────────────┤",
-            "│ Processing:                                                      │",
-            f"│   Frames processed:        {snapshot.frames_processed:,}                               │",
-            f"│   Motion detected:         {snapshot.motion_detected:,} ({snapshot.motion_hit_rate:.1f}% hit rate)                 │",
-            f"│   Events created:          {snapshot.events_created:,}                                  │",
-            f"│   Events suppressed:       {snapshot.events_suppressed:,} (de-duplication)                  │",
-            "│                                                                  │",
-            "│ Performance:                                                     │",
-            f"│   CoreML inference:        avg {snapshot.coreml_inference_avg:.0f}ms, p95 {snapshot.coreml_inference_p95:.0f}ms, max {snapshot.coreml_inference_max:.0f}ms │",
-            f"│   LLM inference:           avg {snapshot.llm_inference_avg:.1f}s, p95 {snapshot.llm_inference_p95:.1f}s, max {snapshot.llm_inference_max:.1f}s │",
-            f"│   End-to-end latency:      avg {snapshot.frame_processing_latency_avg:.1f}s, p95 {snapshot.frame_processing_latency_p95:.1f}s │",
-            "│                                                                  │",
-            "│ Resources:                                                       │",
-            f"│   CPU usage:               avg {snapshot.cpu_usage_avg:.1f}%, current {snapshot.cpu_usage_current:.1f}%                 │",
-            f"│   Memory usage:            {snapshot.memory_usage_gb:.1f}GB ({snapshot.memory_usage_percent:.1f}%)                    │",
-            "│                                                                  │",
-            "│ Availability:                                                    │",
-            f"│   System uptime:           {snapshot.system_uptime_percent:.1f}%                               │",
-            "│                                                                  │",
-            "│ [✓] = Meeting NFR target  [⚠] = Approaching limit  [✗] = Failed │",
-            "└─────────────────────────────────────────────────────────────────┘",
-        ]
+            # NFR indicators based on architecture targets
+            # NFR4: CoreML inference <100ms
+            coreml_indicator = self._get_nfr_indicator(snapshot.coreml_inference_avg, 100.0)
+            # NFR5: LLM inference <2s
+            llm_indicator = self._get_nfr_indicator(snapshot.llm_inference_avg * 1000, 2000.0)  # Convert to ms
+            # NFR7: End-to-end latency <3s
+            latency_indicator = self._get_nfr_indicator(snapshot.frame_processing_latency_avg * 1000, 3000.0)
+            # CPU usage warning at 80%
+            cpu_indicator = "✓" if snapshot.cpu_usage_avg < 60 else ("⚠" if snapshot.cpu_usage_avg < 80 else "✗")
+            # Memory usage warning at 80%
+            mem_indicator = "✓" if snapshot.memory_usage_percent < 60 else ("⚠" if snapshot.memory_usage_percent < 80 else "✗")
+            # Uptime indicator
+            uptime_indicator = "✓" if snapshot.system_uptime_percent >= 99.0 else ("⚠" if snapshot.system_uptime_percent >= 95.0 else "✗")
 
-        return "\n".join(lines)
+            lines = [
+                "├─────────────────────────────────────────────────────────────────┤",
+                f"│ Runtime Metrics - {time.strftime('%Y-%m-%d %H:%M:%S')} (uptime: {uptime_str})     │",
+                "├─────────────────────────────────────────────────────────────────┤",
+                "│ Processing:                                                      │",
+                f"│   Frames processed:        {snapshot.frames_processed:,}                               │",
+                f"│   Motion detected:         {snapshot.motion_detected:,} ({snapshot.motion_hit_rate:.1f}% hit rate)                 │",
+                f"│   Events created:          {snapshot.events_created:,}                                  │",
+                f"│   Events suppressed:       {snapshot.events_suppressed:,} (de-duplication)                  │",
+                "│                                                                  │",
+                "│ Performance (NFR Targets):                                       │",
+                f"│   CoreML inference:    {coreml_indicator}   avg {snapshot.coreml_inference_avg:.0f}ms (target <100ms)        │",
+                f"│   LLM inference:       {llm_indicator}   avg {snapshot.llm_inference_avg:.1f}s (target <2s)          │",
+                f"│   End-to-end latency:  {latency_indicator}   avg {snapshot.frame_processing_latency_avg:.1f}s (target <3s)          │",
+                "│                                                                  │",
+                "│ Resources:                                                       │",
+                f"│   CPU usage:           {cpu_indicator}   avg {snapshot.cpu_usage_avg:.1f}%, current {snapshot.cpu_usage_current:.1f}%         │",
+                f"│   Memory usage:        {mem_indicator}   {snapshot.memory_usage_gb:.1f}GB ({snapshot.memory_usage_percent:.1f}%)            │",
+                "│                                                                  │",
+                "│ Availability:                                                    │",
+                f"│   System uptime:       {uptime_indicator}   {snapshot.system_uptime_percent:.1f}%                       │",
+                "│                                                                  │",
+                "│ [✓] = Meeting NFR target  [⚠] = Approaching limit  [✗] = Failed │",
+                "└─────────────────────────────────────────────────────────────────┘",
+            ]
+
+            display_str = "\n".join(lines)
+
+        # Apply ANSI escape codes if supported
+        if self.use_ansi and not self.first_display:
+            # Clear screen and move cursor to home for in-place update
+            display_str = f"{ANSI_HOME}{ANSI_CLEAR_SCREEN}{display_str}"
+
+        self.first_display = False
+        return display_str
 
     def reset(self) -> None:
         """Reset all metrics (useful for testing)."""

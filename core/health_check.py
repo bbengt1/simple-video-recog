@@ -149,6 +149,56 @@ class HealthChecker:
         except Exception as e:
             return False, f"Configuration validation failed: {str(e)}"
 
+    def _detect_chip_model(self) -> str:
+        """Detect Apple Silicon chip model (M1/M2/M3/M4).
+
+        Returns:
+            Chip model string (e.g., "M1", "M1 Pro", "M2", "M3 Max") or "Unknown"
+        """
+        try:
+            import subprocess
+
+            # Try to get chip info from sysctl
+            result = subprocess.run(
+                ['sysctl', '-n', 'machdep.cpu.brand_string'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+
+            if result.returncode == 0:
+                brand_string = result.stdout.strip()
+                # Extract chip model from brand string
+                # Example: "Apple M1 Pro" or "Apple M2 Max"
+                if 'Apple' in brand_string:
+                    # Remove "Apple" prefix and return the rest
+                    chip_model = brand_string.replace('Apple', '').strip()
+                    return chip_model
+
+            # Fallback: Try hw.model
+            result = subprocess.run(
+                ['sysctl', '-n', 'hw.model'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+
+            if result.returncode == 0:
+                hw_model = result.stdout.strip()
+                # Parse model identifiers (e.g., "MacBookPro18,3" = M1 Pro)
+                # This is a best-effort approximation
+                if 'Mac14' in hw_model:
+                    return "M2"
+                elif 'Mac15' in hw_model or 'Mac16' in hw_model:
+                    return "M3"
+                elif any(x in hw_model for x in ['Mac13', 'Mac14']):
+                    return "M1/M2"
+
+        except Exception:
+            pass
+
+        return "Unknown"
+
     def _check_platform(self) -> tuple[bool, str]:
         """Check platform compatibility."""
         try:
@@ -171,8 +221,10 @@ class HealthChecker:
             if major_version < 13:
                 return False, f"Platform error: macOS 13.0+ required for CoreML Neural Engine, detected {mac_version}"
 
-            # Optional: Detect chip model (M1/M2/M3)
-            chip_info = f"macOS {mac_version} on {platform.machine()}"
+            # Detect chip model (M1/M2/M3/M4)
+            chip_model = self._detect_chip_model()
+            chip_info = f"macOS {mac_version} on Apple {chip_model}"
+
             return True, f"✓ Platform validated: {chip_info}"
 
         except Exception as e:

@@ -7,6 +7,7 @@ JSON output capabilities.
 
 import logging
 import time
+from pathlib import Path
 from typing import Dict, Any
 
 from .config import SystemConfig
@@ -100,12 +101,24 @@ def setup_logging(config: SystemConfig) -> None:
     formatter = ConsoleFormatter()
     console_handler.setFormatter(formatter)
 
-    # Add handler to root logger
+    # Add console handler to root logger
     root_logger.addHandler(console_handler)
+
+    # Create error log file handler (errors only)
+    error_log_path = Path("logs/error.log")
+    error_log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    error_file_handler = logging.FileHandler(error_log_path, mode='a', encoding='utf-8')
+    error_file_handler.setLevel(logging.ERROR)
+    error_file_handler.setFormatter(formatter)
+
+    # Add error file handler to root logger
+    root_logger.addHandler(error_file_handler)
 
     # Log the initial setup
     logger = logging.getLogger(__name__)
     logger.info(f"Logging configured with level: {config.log_level}")
+    logger.info(f"Error logging to: {error_log_path}")
 
 
 def get_logger(name: str) -> logging.Logger:

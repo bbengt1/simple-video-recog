@@ -1,5 +1,10 @@
 # Local Video Recognition System
 
+![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
+![Platform](https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Status](https://img.shields.io/badge/status-production%20ready-brightgreen)
+
 A privacy-first, local-only video recognition system optimized for Apple Silicon that processes RTSP camera streams using motion detection, CoreML object detection, and local LLM semantic understanding.
 
 ## Overview
