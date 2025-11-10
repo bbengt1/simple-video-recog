@@ -37,6 +37,11 @@ ollama_model: "llava:7b"
 # LLM request timeout in seconds (1-60)
 llm_timeout: 10
 
+# Event Deduplication
+# Time window in seconds for suppressing duplicate events
+# Valid range: 1-300 seconds
+deduplication_window: 30
+
 # Storage Configuration
 # SQLite database file path
 db_path: "data/events.db"

@@ -2,11 +2,10 @@
 
 import numpy as np
 import pytest
-from pydantic import HttpUrl
 
 from core.config import SystemConfig
-from core.exceptions import OllamaConnectionError, OllamaTimeoutError
-from core.models import DetectionResult, DetectedObject, BoundingBox
+from core.exceptions import OllamaConnectionError
+from core.models import BoundingBox, DetectedObject, DetectionResult
 from integrations.ollama import OllamaClient
 
 
@@ -15,7 +14,7 @@ def vision_config():
     """Create configuration for vision LLM testing."""
     return SystemConfig(
         camera_rtsp_url="rtsp://test:stream@localhost:8554/test",
-        ollama_base_url=HttpUrl("http://localhost:11434"),
+        ollama_base_url="http://localhost:11434",
         ollama_model="llava:7b",
         llm_timeout=10
     )

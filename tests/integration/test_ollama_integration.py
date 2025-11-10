@@ -6,7 +6,6 @@ run without external dependencies.
 """
 
 import pytest
-from pydantic import HttpUrl
 
 from core.config import SystemConfig
 from core.exceptions import OllamaConnectionError, OllamaModelNotFoundError
@@ -24,7 +23,7 @@ def integration_config():
         coreml_model_path="models/yolov8n.mlmodel",
         blacklist_objects=["bird", "cat"],
         min_object_confidence=0.5,
-        ollama_base_url=HttpUrl("http://localhost:11434"),
+        ollama_base_url="http://localhost:11434",
         ollama_model="llava:7b",
         llm_timeout=10,
         db_path="data/events.db",

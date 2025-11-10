@@ -6,11 +6,11 @@ local Ollama LLM services for semantic event description generation.
 
 import base64
 import time
-import ollama
-from ollama._types import ResponseError
 
 import cv2
 import numpy as np
+import ollama
+from ollama._types import ResponseError
 
 from core.config import SystemConfig
 from core.exceptions import OllamaConnectionError, OllamaModelNotFoundError, OllamaTimeoutError
@@ -97,7 +97,7 @@ class OllamaClient:
         """
         try:
             # Call /api/show to check model availability
-            response = ollama.show(model_name)
+            ollama.show(model_name)
 
             # Log successful verification
             self.logger.info(f"✓ Vision model: {model_name} (available)")

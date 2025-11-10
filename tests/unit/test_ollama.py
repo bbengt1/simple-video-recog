@@ -1,12 +1,13 @@
 """Unit tests for OllamaClient module."""
 
+from unittest.mock import patch
+
 import numpy as np
 import pytest
-from unittest.mock import patch, Mock
 
 from core.config import SystemConfig
 from core.exceptions import OllamaConnectionError, OllamaModelNotFoundError, OllamaTimeoutError
-from core.models import DetectionResult, DetectedObject, BoundingBox
+from core.models import BoundingBox, DetectedObject, DetectionResult
 from integrations.ollama import OllamaClient
 
 

@@ -50,7 +50,7 @@ class TestSystemConfig:
 
         # Act & Assert: Expect ValidationError
         with pytest.raises(ValidationError) as exc_info:
-            SystemConfig(**invalid_config)
+            SystemConfig(**invalid_config)  # type: ignore
 
         # Verify error mentions type issue
         error_str = str(exc_info.value)
@@ -94,7 +94,7 @@ class TestSystemConfig:
         minimal_config = {"camera_rtsp_url": "rtsp://test"}
 
         # Act: Create config
-        config = SystemConfig(**minimal_config)
+        config = SystemConfig(**minimal_config)  # type: ignore
 
         # Assert: Verify defaults applied
         assert config.camera_id == "camera_1"
@@ -163,8 +163,8 @@ class TestLoadConfig:
                 f,
             )
 
-        # Act & Assert: Expect ValidationError
-        with pytest.raises(ValidationError) as exc_info:
+        # Act & Assert: Expect ValueError
+        with pytest.raises(ValueError) as exc_info:
             load_config(str(invalid_config_file))
 
         # Verify error message is informative

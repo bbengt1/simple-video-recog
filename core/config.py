@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class SystemConfig(BaseModel):
@@ -51,7 +51,7 @@ class SystemConfig(BaseModel):
     )
 
     # LLM Configuration
-    ollama_base_url: HttpUrl = Field(
+    ollama_base_url: str = Field(
         default="http://localhost:11434", description="Ollama API endpoint"
     )
     ollama_model: str = Field(
@@ -59,6 +59,11 @@ class SystemConfig(BaseModel):
     )
     llm_timeout: int = Field(
         default=10, ge=1, le=60, description="LLM request timeout in seconds"
+    )
+
+    # Event Deduplication
+    deduplication_window: int = Field(
+        default=30, ge=1, le=300, description="Time window in seconds for event deduplication"
     )
 
     # Storage
@@ -146,7 +151,7 @@ def load_config(config_path: str) -> SystemConfig:
         return config
     except ValidationError as e:
         # Re-raise with additional context about the config file
-        raise ValidationError.from_exception_data(
-            title=f"Configuration Validation Error in {config_path}",
-            line_errors=e.errors(),
+        raise ValueError(
+            f"Configuration Validation Error in {config_path}:\n"
+            f"{str(e)}"
         )
