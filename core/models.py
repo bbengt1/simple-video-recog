@@ -1,8 +1,10 @@
 """Data models for the video recognition system.
 
 This module defines Pydantic models for core data structures used throughout
-the system, including detected objects and bounding boxes.
+the system, including detected objects, bounding boxes, and detection results.
 """
+
+from typing import List, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -81,5 +83,49 @@ class DetectedObject(BaseModel):
                     "width": 180,
                     "height": 320
                 }
+            }
+        }
+
+
+class DetectionResult(BaseModel):
+    """Result of object detection inference on a frame.
+
+    Contains the list of detected objects, inference timing, and frame metadata.
+    Returned by CoreML detector after processing a frame.
+    """
+
+    objects: List[DetectedObject] = Field(
+        default_factory=list,
+        description="List of detected objects in the frame"
+    )
+    inference_time: float = Field(
+        ...,
+        description="Time taken for inference in seconds",
+        ge=0.0,
+        examples=[0.05]
+    )
+    frame_shape: Tuple[int, int, int] = Field(
+        ...,
+        description="Shape of the processed frame (height, width, channels)",
+        examples=[(480, 640, 3)]
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "objects": [
+                    {
+                        "label": "person",
+                        "confidence": 0.92,
+                        "bbox": {"x": 120, "y": 50, "width": 180, "height": 320}
+                    },
+                    {
+                        "label": "car",
+                        "confidence": 0.87,
+                        "bbox": {"x": 300, "y": 100, "width": 200, "height": 150}
+                    }
+                ],
+                "inference_time": 0.05,
+                "frame_shape": (480, 640, 3)
             }
         }

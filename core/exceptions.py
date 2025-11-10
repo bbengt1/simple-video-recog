@@ -44,3 +44,53 @@ class CoreMLLoadError(VideoRecognitionError):
     """
 
     pass
+
+
+class OllamaConnectionError(VideoRecognitionError):
+    """Ollama service connection failed.
+
+    Raised when the system cannot connect to the Ollama LLM service.
+    This includes service not running, network connectivity issues,
+    or invalid base URL configuration.
+
+    Examples:
+        - Ollama service not started (ollama serve not running)
+        - Invalid base URL or port configuration
+        - Network connectivity issues
+        - Service temporarily unavailable
+    """
+
+    pass
+
+
+class OllamaModelNotFoundError(VideoRecognitionError):
+    """Ollama vision model not found.
+
+    Raised when the specified vision model is not downloaded or available
+    in the Ollama service. The model needs to be pulled first using
+    'ollama pull <model_name>'.
+
+    Examples:
+        - Vision model not downloaded (need to run ollama pull)
+        - Incorrect model name specified in configuration
+        - Model was removed or corrupted
+    """
+
+    pass
+
+
+class OllamaTimeoutError(VideoRecognitionError):
+    """Ollama LLM inference timeout.
+
+    Raised when LLM inference exceeds the configured timeout limit.
+    This prevents the system from hanging on slow or unresponsive
+    LLM requests while still allowing graceful degradation.
+
+    Examples:
+        - Large images causing slow processing
+        - Model overload on the local system
+        - Network latency issues (though local, still possible)
+        - Complex prompts requiring extended processing time
+    """
+
+    pass

@@ -20,7 +20,38 @@ This system monitors RTSP camera streams, detects motion, identifies objects usi
 - **Operating System:** macOS 13+ (Ventura or later)
 - **Hardware:** Apple Silicon (M1, M2, or M3 processor)
 - **Camera:** RTSP-compatible IP camera
-- **Ollama:** Local LLM service (installation instructions below)
+- **Ollama:** Local LLM service for semantic event descriptions
+
+### Ollama Setup
+
+**1. Install Ollama:**
+```bash
+brew install ollama
+```
+
+**2. Start Ollama Service:**
+```bash
+ollama serve
+```
+
+**3. Download Vision Model:**
+```bash
+# Pull LLaVA model (recommended for vision tasks)
+ollama pull llava:7b
+
+# Alternative: Pull MoonDream model
+ollama pull moondream:latest
+```
+
+**4. Verify Installation:**
+```bash
+# Check available models
+ollama list
+
+# Expected output includes your downloaded model:
+# NAME                    ID      SIZE    MODIFIED
+# llava:7b                8dd30f6b0cb1    4.7 GB  2 minutes ago
+```
 
 ## Setup Instructions
 
