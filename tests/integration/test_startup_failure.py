@@ -4,6 +4,7 @@ Tests system behavior when startup fails due to configuration or connectivity is
 """
 
 import subprocess
+import sys
 import tempfile
 import yaml
 import os
@@ -27,7 +28,7 @@ def test_startup_with_invalid_config():
         # Run main.py with invalid config
         project_root = Path(__file__).parent.parent.parent
         result = subprocess.run(
-            ['python', 'main.py', '--config', config_path],
+            [sys.executable, 'main.py', '--config', config_path],
             capture_output=True,
             text=True,
             cwd=project_root,
@@ -62,7 +63,7 @@ def test_startup_with_invalid_rtsp_url():
         # Run main.py with invalid RTSP URL
         project_root = Path(__file__).parent.parent.parent
         result = subprocess.run(
-            ['python', 'main.py', '--config', config_path],
+            [sys.executable, 'main.py', '--config', config_path],
             capture_output=True,
             text=True,
             cwd=project_root,

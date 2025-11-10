@@ -40,9 +40,9 @@ class TestCLIExecution:
         result = self.run_cli_command(["--version"])
 
         assert result.returncode == 0
-        assert "video-recog v1.0.0" in result.stdout
-        assert "build 2025-11-08" in result.stdout
-        assert "Python" in result.stdout
+        assert "Video Recognition System v1.0.0" in result.stdout
+        assert "Build: 2025-11-08" in result.stdout
+        assert "Python:" in result.stdout
 
     def test_invalid_config_file_exits_with_code_2(self):
         """Test invalid config file exits with code 2."""

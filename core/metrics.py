@@ -11,12 +11,14 @@ from pydantic import BaseModel, Field
 
 from .config import SystemConfig
 from .logging_config import get_logger
+from .version import get_version_info
 
 
 class MetricsSnapshot(BaseModel):
     """Snapshot of system performance metrics at a point in time."""
 
     timestamp: float = Field(description="Unix timestamp when metrics were collected")
+    version: str = Field(description="Application version")
 
     # Processing statistics
     frames_processed: int = Field(default=0, description="Total frames processed")
@@ -79,6 +81,9 @@ class MetricsCollector:
         """
         self.config = config
         self.logger = get_logger(__name__)
+
+        # Get version info once at initialization
+        self.version_info = get_version_info()
 
         # Rolling window for timing measurements (last 1000 events)
         self.rolling_window_size = 1000
@@ -235,6 +240,7 @@ class MetricsCollector:
         # Create snapshot
         snapshot = MetricsSnapshot(
             timestamp=time.time(),
+            version=self.version_info.version,
             frames_processed=self.frames_processed,
             motion_detected=self.motion_detected,
             motion_hit_rate=motion_hit_rate,

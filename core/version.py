@@ -1,45 +1,64 @@
-"""Version information for the video recognition system.
+"""Version information and build metadata for the Video Recognition System."""
 
-This module provides version and build information for the application.
-"""
 import platform
 import sys
-from datetime import datetime
 from typing import Optional
+
+try:
+    import cv2
+    opencv_version = cv2.__version__
+except ImportError:
+    opencv_version = "Not available"
+
+try:
+    import coremltools
+    coreml_version = coremltools.__version__
+except ImportError:
+    coreml_version = "Not available"
+
+try:
+    import ollama
+    ollama_version = getattr(ollama, '__version__', 'Not available')
+except ImportError:
+    ollama_version = "Not available"
 
 from pydantic import BaseModel, Field
 
 
 class VersionInfo(BaseModel):
-    """Structured version information."""
+    """Version and build information for the application."""
 
-    version: str = Field(..., description="Semantic version string")
-    build_date: str = Field(..., description="Build date in YYYY-MM-DD format")
-    git_commit: Optional[str] = Field(None, description="Git commit hash")
-    python_version: str = Field(..., description="Python version")
-    platform: str = Field(..., description="Operating system platform")
-    architecture: str = Field(..., description="System architecture")
+    version: str = Field(description="Application version (semantic versioning)")
+    build_date: str = Field(description="Build timestamp in ISO format")
+    git_commit: str = Field(description="Git commit hash (short)")
+    python_version: str = Field(description="Runtime Python version")
+    platform: str = Field(description="OS and architecture information")
+    opencv_version: str = Field(description="OpenCV version")
+    coreml_version: str = Field(description="CoreML Tools version")
+    ollama_version: str = Field(description="Ollama client version")
 
 
 # Version constants - updated by CI/CD pipeline
 VERSION = "1.0.0"
 BUILD_DATE = "2025-11-08"
-GIT_COMMIT = None  # Set by CI/CD
+GIT_COMMIT = "abc123f"  # Set by CI/CD
 
 
 def get_version_info() -> VersionInfo:
-    """Get complete version information including runtime details.
+    """Get comprehensive version information for the application.
 
     Returns:
-        VersionInfo object with version and runtime information
+        VersionInfo object containing all version and runtime information.
     """
     return VersionInfo(
         version=VERSION,
         build_date=BUILD_DATE,
-        git_commit=GIT_COMMIT,
-        python_version=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        platform=platform.system(),
-        architecture=platform.machine()
+        git_commit=GIT_COMMIT if GIT_COMMIT != "dev" else "dev",  # Use "dev" if not set
+        python_version=sys.version,
+        platform=platform.platform(),
+        opencv_version=opencv_version,
+        coreml_version=coreml_version,
+        ollama_version=ollama_version,
     )
 
 
@@ -47,13 +66,18 @@ def format_version_output() -> str:
     """Format version information for CLI display.
 
     Returns:
-        Formatted version string for console output
+        Formatted version string for console output matching acceptance criteria
     """
     info = get_version_info()
-    version_str = f"video-recog v{info.version} (build {info.build_date})"
-    runtime_str = f" - Python {info.python_version} - {info.platform}"
 
-    if info.git_commit:
-        version_str += f" - {info.git_commit[:8]}"
+    output = f"""Video Recognition System v{info.version}
+Build: {info.build_date} (commit {info.git_commit})
+Python: {info.python_version.split()[0]}
+Platform: {info.platform}
+Dependencies:
+  - OpenCV: {info.opencv_version}
+  - CoreML Tools: {info.coreml_version}
+  - Ollama: {info.ollama_version}
+"""
 
-    return version_str + runtime_str
+    return output

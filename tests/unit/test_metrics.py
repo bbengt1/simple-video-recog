@@ -35,7 +35,7 @@ class TestMetricsSnapshot:
 
     def test_default_values(self):
         """Test that MetricsSnapshot has correct default values."""
-        snapshot = MetricsSnapshot(timestamp=1234567890.0)
+        snapshot = MetricsSnapshot(timestamp=1234567890.0, version="1.0.0")
 
         assert snapshot.timestamp == 1234567890.0
         assert snapshot.frames_processed == 0
@@ -51,6 +51,7 @@ class TestMetricsSnapshot:
         """Test that MetricsSnapshot can be serialized to JSON."""
         snapshot = MetricsSnapshot(
             timestamp=1234567890.0,
+            version="1.0.0",
             frames_processed=100,
             motion_detected=20,
             events_created=5,
@@ -218,7 +219,7 @@ class TestMetricsCollector:
         metrics_collector.metrics_log_path = tmp_path / "test_metrics.json"
 
         # Create a test snapshot
-        snapshot = MetricsSnapshot(timestamp=1234567890.0, frames_processed=42)
+        snapshot = MetricsSnapshot(timestamp=1234567890.0, version="1.0.0", frames_processed=42)
 
         # Log metrics
         metrics_collector.log_metrics(snapshot)

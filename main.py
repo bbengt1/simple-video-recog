@@ -21,7 +21,8 @@ from core.pipeline import FrameSampler, ProcessingPipeline
 from core.events import EventDeduplicator
 from core.image_annotator import ImageAnnotator
 from core.database import DatabaseManager
-from core.version import format_version_output
+from core.version import format_version_output, get_version_info
+from core.dry_run import DryRunValidator
 from apple_platform.coreml_detector import CoreMLDetector
 from integrations.rtsp_client import RTSPCameraClient
 from integrations.ollama import OllamaClient
@@ -118,24 +119,31 @@ def main():
         # Setup logging
         setup_logging(config)
 
+        # Log version information at startup
+        version_info = get_version_info()
+        logger.info(f"Video Recognition System v{version_info.version} started")
+        logger.info(f"Build: {version_info.build_date} (commit {version_info.git_commit})")
+        logger.info(f"Python: {version_info.python_version.split()[0]}")
+        logger.info(f"Platform: {version_info.platform}")
+
         logger.info("Starting video recognition system...")
 
         # Perform health checks
         health_checker = HealthChecker(config)
 
-        # Handle dry-run mode (perform checks and exit)
+        # Handle dry-run mode (perform comprehensive validation and exit)
         if args.dry_run:
             logger.info("Starting dry-run mode: Performing comprehensive system validation...")
-            result = health_checker.check_all(display_output=True)
 
-            if result.all_passed:
-                logger.info("Dry-run validation successful: All health checks passed.")
-                print("\n[DRY-RUN] ✓ All validations passed. System ready for processing.")
+            dry_run_validator = DryRunValidator(config)
+            success = dry_run_validator.run_full_validation()
+            dry_run_validator.print_summary()
+
+            if success:
+                logger.info("Dry-run validation successful: All validations passed.")
                 sys.exit(EXIT_SUCCESS)
             else:
-                logger.error(f"Dry-run validation failed: {len(result.failed_checks)} failed, {len(result.warnings)} warnings.")
-                print(f"\n[DRY-RUN] ✗ Validation failed: {len(result.failed_checks)} checks failed, {len(result.warnings)} warnings.")
-                print("Please fix the issues above before starting the system.")
+                logger.error("Dry-run validation failed: Some validations or tests failed.")
                 sys.exit(EXIT_CONFIG_INVALID)
 
         # Normal mode: Initialize components after health checks pass

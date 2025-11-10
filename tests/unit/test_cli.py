@@ -18,16 +18,16 @@ class TestVersionInfo:
         assert info.build_date == "2025-11-08"
         assert info.python_version is not None
         assert info.platform is not None
-        assert info.architecture is not None
 
     def test_format_version_output(self):
         """Test version output formatting."""
         output = format_version_output()
 
-        assert "video-recog v1.0.0" in output
-        assert "build 2025-11-08" in output
-        assert "Python" in output
-        assert output.count(" - ") >= 2  # At least version and runtime info
+        assert "Video Recognition System v1.0.0" in output
+        assert "Build: 2025-11-08" in output
+        assert "Python:" in output
+        assert "Platform:" in output
+        assert "Dependencies:" in output
 
 
 class TestCLIArgumentParsing:
@@ -48,7 +48,7 @@ class TestCLIArgumentParsing:
 
             mock_print.assert_called_once()
             printed_output = mock_print.call_args[0][0]
-            assert "video-recog v1.0.0" in printed_output
+            assert "Video Recognition System v1.0.0" in printed_output
 
     @patch('main.parse_arguments')
     @patch('main.load_config')
