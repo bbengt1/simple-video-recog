@@ -458,6 +458,62 @@ docker stop video-recognition
 docker kill -s HUP video-recognition
 ```
 
+## Web Dashboard
+
+The system includes a FastAPI-based web server that provides a dashboard for viewing events and system status without requiring direct database access.
+
+### Starting the Web Server
+
+**1. Ensure the main application has been run first:**
+```bash
+python main.py --config config/config.yaml
+# Let it run for a few minutes to create the database
+# Press Ctrl+C to stop
+```
+
+**2. Start the web server:**
+```bash
+python web_server.py
+```
+
+**3. Access the dashboard:**
+- **Dashboard:** http://localhost:8000
+- **API Documentation:** http://localhost:8000/docs
+- **Health Check:** http://localhost:8000/api/health
+
+### Web Server Features
+
+- **Event Dashboard:** View recent events with images and descriptions
+- **System Health:** Real-time health monitoring and uptime tracking
+- **API Access:** RESTful endpoints for programmatic event access
+- **Static File Serving:** CSS, JavaScript, and event images
+- **Auto-generated Documentation:** Interactive API docs via Swagger/ReDoc
+
+### Configuration
+
+**Environment Variables:**
+- `WEB_PORT`: Server port (default: 8000)
+- `DEV_MODE`: Enable development mode with auto-reload (default: disabled)
+
+**Security Notes:**
+- Server binds to `127.0.0.1` (localhost only)
+- Database connections are read-only
+- No authentication required for local access
+
+### API Endpoints
+
+**Health Check:**
+```bash
+GET /api/health
+```
+Returns system status, database connectivity, and uptime information.
+
+**Event Access (Future - Story 5.2):**
+```bash
+GET /api/events
+GET /api/events/{event_id}
+```
+
 ## Development
 
 *Placeholder - will be filled in Story 1.7*
@@ -470,12 +526,14 @@ docker kill -s HUP video-recognition
 
 ```
 video-recognition/
+├── api/                 # FastAPI web server and REST API
 ├── core/                # Platform-independent business logic
-├── platform/            # Apple Silicon-specific implementations
+├── apple_platform/      # Apple Silicon-specific implementations
 ├── integrations/        # External service clients (Ollama, RTSP)
+├── web/                 # Static web assets (HTML, CSS, JS)
 ├── config/              # Configuration files
 ├── tests/               # Test organization (unit/, integration/, performance/)
-├── docs/                # Documentation (PRD, architecture)
+├── docs/                # Documentation (PRD, architecture, stories)
 ├── data/                # Runtime data (gitignored)
 ├── logs/                # Application logs (gitignored)
 ├── models/              # CoreML models (gitignored)

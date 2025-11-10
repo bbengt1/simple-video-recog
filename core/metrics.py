@@ -498,3 +498,21 @@ class MetricsCollector:
         self.cpu_usage_history.clear()
         self.system_start_time = time.time()
         self.last_log_time = 0.0
+
+
+# Module-level singleton for API access
+_metrics_collector_instance = None
+
+
+def get_metrics_collector():
+    """
+    Get MetricsCollector singleton instance.
+
+    Used by API to access current metrics without database queries.
+    """
+    global _metrics_collector_instance
+    if _metrics_collector_instance is None:
+        from .config import load_config
+        config = load_config("config/config.yaml")
+        _metrics_collector_instance = MetricsCollector(config)
+    return _metrics_collector_instance

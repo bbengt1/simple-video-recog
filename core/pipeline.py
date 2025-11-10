@@ -17,6 +17,7 @@ import numpy as np
 from apple_platform.coreml_detector import CoreMLDetector
 from core.config import SystemConfig
 from core.database import DatabaseManager
+from core.event_manager import EventManager
 from core.events import EventDeduplicator
 from core.exceptions import VideoRecognitionError
 from core.image_annotator import ImageAnnotator
@@ -82,6 +83,7 @@ class ProcessingPipeline:
         frame_sampler: FrameSampler,
         coreml_detector: CoreMLDetector,
         event_deduplicator: EventDeduplicator,
+        event_manager: EventManager,
         ollama_client: OllamaClient,
         image_annotator: ImageAnnotator,
         database_manager: DatabaseManager,
@@ -97,6 +99,7 @@ class ProcessingPipeline:
             frame_sampler: Frame sampling component
             coreml_detector: CoreML object detection component
             event_deduplicator: Event deduplication component
+            event_manager: Event creation and broadcasting manager
             ollama_client: LLM semantic description component
             image_annotator: Image annotation component
             database_manager: Database manager for event persistence
@@ -109,6 +112,7 @@ class ProcessingPipeline:
         self.frame_sampler = frame_sampler
         self.coreml_detector = coreml_detector
         self.event_deduplicator = event_deduplicator
+        self.event_manager = event_manager
         self.ollama_client = ollama_client
         self.image_annotator = image_annotator
         self.database_manager = database_manager
@@ -182,6 +186,7 @@ class ProcessingPipeline:
                         # Stage 3: Object detection (CoreML)
                         import time
                         detection_start = time.time()
+                        detections = None
                         try:
                             detected_objects = self.coreml_detector.detect_objects(frame)
                             detection_time = time.time() - detection_start
@@ -203,11 +208,28 @@ class ProcessingPipeline:
                             )
                         except Exception as e:
                             logger.warning(f"CoreML detection failed: {e}")
-                            continue  # Skip frame if detection fails
+                            # Create fallback DetectionResult with motion-only information
+                            from core.models import DetectionResult, DetectedObject, BoundingBox
+                            detection_time = time.time() - detection_start
 
-                        # Skip if no objects detected
-                        if not detections.objects:
-                            logger.debug("No objects detected")
+                            # Create a generic "motion" object to represent detected motion
+                            motion_object = DetectedObject(
+                                label="motion",
+                                confidence=confidence,  # Use motion confidence
+                                bbox=BoundingBox(x=0, y=0, width=frame.shape[1], height=frame.shape[0])  # Full frame
+                            )
+
+                            detections = DetectionResult(
+                                objects=[motion_object],
+                                inference_time=detection_time,
+                                frame_shape=tuple(frame.shape)
+                            )
+
+                            logger.info(f"Created motion-only event (CoreML unavailable): confidence={confidence:.3f}")
+
+                        # Skip if no detections (shouldn't happen with fallback)
+                        if not detections or not detections.objects:
+                            logger.debug("No detections available")
                             continue
 
                         # Stage 4: Event deduplication
@@ -233,20 +255,65 @@ class ProcessingPipeline:
 
                         # Stage 6: Event creation and output
                         try:
-                            # Generate event ID and create Event object
+                            # Generate event ID
                             from core.events import Event
                             from datetime import timezone
                             event_id = Event.generate_event_id()
                             now = datetime.now(timezone.utc)
-                            event = Event(
+
+                            # Annotate and save image
+                            annotated_frame = self.image_annotator.annotate(frame, detections.objects)
+
+                            # Create directories for persistence
+                            image_path = f"data/events/{now.date()}/{event_id}.jpg"
+                            json_log_path = f"data/events/{now.date()}/events.json"
+                            image_dir = Path(image_path).parent
+                            json_dir = Path(json_log_path).parent
+                            image_dir.mkdir(parents=True, exist_ok=True)
+                            json_dir.mkdir(parents=True, exist_ok=True)
+
+                            # Save annotated image
+                            try:
+                                cv2.imwrite(str(image_path), annotated_frame)
+                                logger.debug(f"Saved annotated image: {image_path}")
+                            except Exception as e:
+                                logger.warning(f"Failed to save annotated image {image_path}: {e}")
+
+                            # Append event to JSON log file (for now, will be moved to EventManager later)
+                            try:
+                                # Create temporary event for JSON logging
+                                temp_event = Event(
+                                    event_id=event_id,
+                                    timestamp=now,
+                                    camera_id=self.config.camera_id,
+                                    motion_confidence=confidence,
+                                    detected_objects=detections.objects,
+                                    llm_description=description,
+                                    image_path=image_path,
+                                    json_log_path=json_log_path,
+                                    metadata={
+                                        "coreml_inference_time": detections.inference_time,
+                                        "llm_inference_time": llm_time if 'llm_time' in locals() else 0.0,
+                                        "frame_number": self.metrics_collector.frames_processed,
+                                        "motion_threshold_used": self.config.motion_threshold,
+                                    }
+                                )
+                                with open(json_log_path, 'a', encoding='utf-8') as f:
+                                    f.write(temp_event.model_dump_json() + '\n')
+                                logger.debug(f"Appended event to JSON log: {json_log_path}")
+                            except Exception as e:
+                                logger.warning(f"Failed to append to JSON log {json_log_path}: {e}")
+
+                            # Create event using EventManager (includes database persistence and WebSocket broadcasting)
+                            event = self.event_manager.create_event(
                                 event_id=event_id,
                                 timestamp=now,
                                 camera_id=self.config.camera_id,
                                 motion_confidence=confidence,
                                 detected_objects=detections.objects,
                                 llm_description=description,
-                                image_path=f"data/events/{now.date()}/{event_id}.jpg",
-                                json_log_path=f"data/events/{now.date()}/events.json",
+                                image_path=image_path,
+                                json_log_path=json_log_path,
                                 metadata={
                                     "coreml_inference_time": detections.inference_time,
                                     "llm_inference_time": llm_time if 'llm_time' in locals() else 0.0,
@@ -255,52 +322,23 @@ class ProcessingPipeline:
                                 }
                             )
 
-                            # Annotate and save image
-                            annotated_frame = self.image_annotator.annotate(frame, detections.objects)
+                            if event:
+                                # Output Event JSON (console for now, file in Epic 3)
+                                print(event.to_json())  # Console output as specified
 
-                            # Create directories for persistence
-                            image_dir = Path(event.image_path).parent
-                            json_dir = Path(event.json_log_path).parent
-                            image_dir.mkdir(parents=True, exist_ok=True)
-                            json_dir.mkdir(parents=True, exist_ok=True)
+                                self.metrics_collector.increment_counter("events_created")
+                                logger.info(f"Event created: {event_id}, objects={len(detections.objects)}")
 
-                            # Save annotated image
-                            try:
-                                cv2.imwrite(str(event.image_path), annotated_frame)
-                                logger.debug(f"Saved annotated image: {event.image_path}")
-                            except Exception as e:
-                                logger.warning(f"Failed to save annotated image {event.image_path}: {e}")
-
-                            # Append event to JSON log file
-                            try:
-                                with open(event.json_log_path, 'a', encoding='utf-8') as f:
-                                    f.write(event.model_dump_json() + '\n')
-                                logger.debug(f"Appended event to JSON log: {event.json_log_path}")
-                            except Exception as e:
-                                logger.warning(f"Failed to append to JSON log {event.json_log_path}: {e}")
-
-                            # Persist event to database
-                            try:
-                                self.database_manager.insert_event(event)
-                                logger.debug(f"Inserted event into database: {event_id}")
-                            except Exception as e:
-                                logger.error(f"Failed to persist event {event_id} to database: {e}")
-                                # Continue processing even if database insert fails
-
-                            # Output Event JSON (console for now, file in Epic 3)
-                            print(event.to_json())  # Console output as specified
-
-                            self.metrics_collector.increment_counter("events_created")
-                            logger.info(f"Event created: {event_id}, objects={len(detections.objects)}")
-
-                            # Check storage limits after event creation
-                            if self.storage_monitor.check_storage_and_enforce_limits():
-                                logger.critical(
-                                    "Storage limit exceeded during event processing. "
-                                    "Initiating graceful shutdown to prevent data loss."
-                                )
-                                self.signal_handler.shutdown_event.set()
-                                break
+                                # Check storage limits after event creation
+                                if self.storage_monitor.check_storage_and_enforce_limits():
+                                    logger.critical(
+                                        "Storage limit exceeded during event processing. "
+                                        "Initiating graceful shutdown to prevent data loss."
+                                    )
+                                    self.signal_handler.shutdown_event.set()
+                                    break
+                            else:
+                                logger.error(f"Event creation failed for {event_id}")
 
                         except Exception as e:
                             logger.error(f"Event creation failed: {e}")

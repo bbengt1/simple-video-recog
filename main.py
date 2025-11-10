@@ -18,6 +18,7 @@ from core.logging_config import setup_logging
 from core.health_check import HealthChecker
 from core.motion_detector import MotionDetector
 from core.pipeline import FrameSampler, ProcessingPipeline
+from core.event_manager import EventManager
 from core.events import EventDeduplicator
 from core.image_annotator import ImageAnnotator
 from core.database import DatabaseManager
@@ -274,6 +275,21 @@ def main():
         ollama_client = OllamaClient(config)
         image_annotator = ImageAnnotator()
 
+        # Initialize event manager (Story 5.3: WebSocket support)
+        # WebSocket manager will be None if web server is not running
+        try:
+            from api.routes.stream import get_websocket_manager
+            websocket_manager = get_websocket_manager()
+            logger.info("WebSocket manager available for event broadcasting")
+        except ImportError:
+            websocket_manager = None
+            logger.info("WebSocket manager not available (web server not running)")
+
+        event_manager = EventManager(
+            database_manager=database_manager,
+            websocket_manager=websocket_manager
+        )
+
         # Initialize and start processing pipeline
         pipeline = ProcessingPipeline(
             rtsp_client=rtsp_client,
@@ -281,6 +297,7 @@ def main():
             frame_sampler=frame_sampler,
             coreml_detector=coreml_detector,
             event_deduplicator=event_deduplicator,
+            event_manager=event_manager,
             ollama_client=ollama_client,
             image_annotator=image_annotator,
             database_manager=database_manager,

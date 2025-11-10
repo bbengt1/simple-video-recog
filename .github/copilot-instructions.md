@@ -85,8 +85,8 @@ event_json = event.model_dump_json(indent=2)
 - Storage monitoring with configurable GB limits
 
 ### File Organization
-- `core/`: Platform-independent business logic
-- `apple_platform/`: Apple Silicon-specific implementations (CoreML)
+- `core/`: Platform-independent business logic (config, models, pipeline, events)
+- `apple_platform/`: Apple Silicon-specific implementations (CoreML detector)
 - `integrations/`: External service clients (RTSP, Ollama)
 - `tests/unit/`, `tests/integration/`: Comprehensive test suites
 - `migrations/`: SQL schema migrations
@@ -119,11 +119,63 @@ event_json = event.model_dump_json(indent=2)
 - Timestamp-optimized indexing
 - Version-tracked migrations in `migrations/`
 
-## BMAD Development Workflow
-- **Planning**: PRD → Architecture → Story Sharding (`docs/stories/`)
-- **Development**: Story implementation with @dev agent
-- **Quality**: @qa agent reviews with risk assessment and quality gates
-- **Agents**: @dev (implementation), @qa (testing), @architect (design), @pm/@po (planning)
+## BMAD Method Development Workflow (REQUIRED)
+
+This project uses the BMad Method for structured AI-driven development. **ALL AI agents must follow BMad Method guidelines and use the specified agents for their roles.**
+
+### Essential BMad Files (Must Read)
+- **`.bmad-core/user-guide.md`**: Complete BMad Method workflow and processes
+- **`.bmad-core/core-config.yaml`**: Core configuration and devLoadAlwaysFiles
+- **`.bmad-core/agents/`**: Agent definitions and role responsibilities
+- **`.bmad-core/tasks/`**: Task definitions and execution guidelines
+- **`.bmad-core/templates/`**: Document templates and schemas
+
+### Agent Usage (REQUIRED)
+```bash
+# Use appropriate agents for each role
+@pm    # Product Management - PRDs, epics, stories
+@po    # Product Ownership - Story validation, acceptance criteria
+@sm    # Story Management - Story drafting and refinement
+@architect  # System Architecture - Technical design and patterns
+@dev   # Development - Code implementation following BMad standards
+@qa    # Quality Assurance - Risk assessment, test design, quality gates
+```
+
+### BMad Workflow Commands (REQUIRED)
+```bash
+# Planning Phase
+@po Create PRD for {feature}           # Product requirements
+@architect Create architecture        # System design
+@po Shard documents                   # Break into stories
+
+# Development Phase
+@sm Draft story for {feature}         # Story creation
+@qa *risk {story}                     # Risk assessment
+@qa *design {story}                   # Test strategy
+@dev Implement {story}                # Code implementation
+@qa *review {story}                   # Quality assessment
+
+# Quality Gates
+@qa *gate {story}                     # Update gate status
+```
+
+### Document Structure (REQUIRED)
+```
+docs/
+├── prd.md                    # Product Requirements Document
+├── architecture.md           # System Architecture
+├── stories/                  # Sharded user stories
+├── epics/                    # Epic definitions
+└── qa/
+    ├── assessments/          # Risk profiles, test designs
+    └── gates/               # Quality gate decisions
+```
+
+### Quality Standards (REQUIRED)
+- **Risk Assessment**: Run `@qa *risk` before development
+- **Test Design**: Run `@qa *design` before implementation
+- **Quality Gates**: All stories must pass QA review
+- **Documentation**: All decisions documented in appropriate folders
 
 ## Code Quality Standards
 - Format with `black` (100 char line length) and lint with `ruff`
@@ -132,268 +184,3 @@ event_json = event.model_dump_json(indent=2)
 - Comprehensive error handling and logging
 
 Focus on privacy-first design, Apple Silicon optimization, and robust error recovery.
-
-## Project-Specific Conventions
-
-### Configuration Management
-- Use `SystemConfig` Pydantic model for all settings with field validation
-- Load via `load_config(config_path)` with YAML validation
-- Example: `config = load_config("config/config.yaml")`
-- Override config with command-line args in `main.py`
-
-### Error Handling
-- Custom exceptions: `RTSPConnectionError`, `CoreMLLoadError`, `VideoRecognitionError`, `OllamaConnectionError`
-- Graceful degradation: Log errors but continue processing
-- RTSP reconnection with exponential backoff (1s, 2s, 4s, 8s max)
-- Health checks before startup in `HealthChecker`
-
-### Data Models
-```python
-# Use Pydantic BaseModel for all data structures
-class DetectedObject(BaseModel):
-    label: str
-    confidence: float = Field(ge=0.0, le=1.0)
-    bbox: BoundingBox
-
-# JSON serialization with .model_dump_json()
-event_json = event.model_dump_json(indent=2)
-
-# Event IDs use timestamp + random suffix
-event_id = f"evt_{int(time.time() * 1000)}_{secrets.token_hex(2)}"
-```
-
-### Performance Optimization
-- Frame sampling reduces processing load (default: every 5th frame during motion)
-- CoreML targets <100ms inference on Neural Engine with ANE compatibility checking
-- LLM timeout: 10 seconds with fallback descriptions
-- Storage monitoring with configurable GB limits and retention policies
-- Event deduplication prevents spam (30s default window)
-
-### File Organization
-- `core/`: Platform-independent business logic (config, models, pipeline, events)
-- `apple_platform/`: Apple Silicon-specific implementations (CoreML detector)
-- `integrations/`: External service clients (RTSP, Ollama)
-- `tests/unit/`, `tests/integration/`: Comprehensive test organization
-- `migrations/`: SQL migration scripts for database schema
-- `config/`: YAML configuration files
-- `data/`: Runtime data storage (events, database)
-- `.bmad-core/`: BMAD method implementation (agents, tasks, workflows)
-- `.bmad-core/agents/`: Specialized AI agents (dev, qa, architect, pm, etc.)
-- `docs/prd.md`: Product requirements document
-- `docs/architecture.md`: System architecture documentation
-- `docs/stories/`: Sharded user stories from BMAD workflow
-
-### Module-Specific Patterns
-
-**Core Modules (`core/`):**
-- Business logic only, no platform-specific code
-- Use dependency injection for all external dependencies
-- Include comprehensive type hints and docstrings
-- Follow repository pattern for data access
-
-**Platform Modules (`apple_platform/`):**
-- Apple Silicon and macOS-specific implementations
-- Abstract interfaces defined in `core/`
-- CoreML and Metal-specific optimizations
-- Hardware compatibility validation
-
-**Integration Modules (`integrations/`):**
-- External service clients (RTSP, Ollama, etc.)
-- Error handling with exponential backoff
-- Connection pooling and health checks
-- Mock implementations for testing
-
-**Test Organization:**
-- `tests/unit/`: Individual component tests with mocks
-- `tests/integration/`: End-to-end pipeline tests
-- `tests/performance/`: Benchmarking and NFR validation
-- Mirror source structure (e.g., `tests/unit/test_config.py`)
-
-## Common Patterns
-
-### Component Initialization
-```python
-# Always inject dependencies, never create internally
-def __init__(self, config: SystemConfig):
-    self.config = config
-    self.logger = get_logger(__name__)
-```
-
-### Frame Processing Loop
-```python
-while not shutdown_requested:
-    frame = rtsp_client.get_frame()
-    if frame is None:
-        continue
-
-    # Process frame through pipeline stages
-    has_motion, confidence, mask = motion_detector.detect_motion(frame)
-    if has_motion and frame_sampler.should_process(frame_count):
-        # Run inference and create events
-```
-
-### Event Creation and Deduplication
-```python
-# Generate unique event IDs with millisecond precision
-event_id = Event.generate_event_id()
-
-# Create with all metadata
-event = Event(
-    event_id=event_id,
-    timestamp=datetime.now(timezone.utc),
-    camera_id=config.camera_id,
-    detected_objects=detections.objects,
-    llm_description=description
-)
-
-# Check deduplication before creating
-if not event_deduplicator.should_create_event(detections):
-    # Suppress duplicate events
-```
-
-### Database Operations
-```python
-# Use DatabaseManager for SQLite operations
-db = DatabaseManager(config.db_path)
-db.init_database()  # Applies migrations automatically
-
-# Atomic event insertion
-with db.conn:
-    db.insert_event(event)
-```
-
-### Signal Handling and Graceful Shutdown
-```python
-# Handle SIGINT/SIGTERM for graceful shutdown
-import signal
-
-shutdown_requested = False
-
-def signal_handler(signum, frame):
-    global shutdown_requested
-    logger.info("Shutdown signal received, stopping processing...")
-    shutdown_requested = True
-
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
-```
-
-### Health Checks and Startup Validation
-```python
-# Comprehensive startup validation
-def perform_health_checks(config: SystemConfig) -> bool:
-    checks = [
-        ("Configuration", validate_config(config)),
-        ("CoreML Model", validate_coreml_model(config.coreml_model_path)),
-        ("Ollama Service", check_ollama_service(config.ollama_base_url)),
-        ("RTSP Camera", test_rtsp_connection(config.camera_rtsp_url)),
-        ("Storage", check_storage_limits(config.max_storage_gb)),
-    ]
-
-    all_passed = True
-    for check_name, passed in checks:
-        status = "✓" if passed else "✗"
-        logger.info(f"[{status}] {check_name}")
-        all_passed &= passed
-
-    return all_passed
-```
-
-### Custom Exceptions
-```python
-# Use specific exception types for different failure modes
-class RTSPConnectionError(Exception):
-    """Failed to connect to RTSP camera stream."""
-
-class CoreMLLoadError(Exception):
-    """Failed to load or validate CoreML model."""
-
-class VideoRecognitionError(Exception):
-    """Generic video recognition processing error."""
-
-class OllamaConnectionError(Exception):
-    """Failed to connect to Ollama LLM service."""
-```
-
-## Integration Points
-
-### RTSP Camera Integration
-- **Client**: OpenCV VideoCapture with background thread capture and reconnection logic
-- **Connection**: RTSP URL format: `rtsp://username:password@ip:port/stream`
-- **Reconnection**: Exponential backoff (1s, 2s, 4s, 8s max) on connection failures
-- **Error Handling**: RTSPConnectionError for network/camera issues
-- **Frame Queue**: Max 100 frames to prevent memory overflow
-
-### Ollama LLM Integration
-- **API**: HTTP client to localhost:11434 with vision models (llava, moondream)
-- **Timeout**: 10 seconds configurable via `llm_timeout`
-- **Fallback**: Generic descriptions when LLM fails: "Detected: {object_labels}"
-- **Error Handling**: OllamaConnectionError with retry logic
-- **Prompt Template**: "Describe what is happening in this image. Focus on: {object_labels}"
-
-### CoreML Model Integration
-- **Format**: .mlmodel files optimized for Apple Neural Engine
-- **Validation**: ANE compatibility checking at startup
-- **Performance**: Target <100ms inference on M1/M2 hardware
-- **Input**: RGB frames (convert from OpenCV BGR)
-- **Error Handling**: CoreMLLoadError for model loading failures
-
-### SQLite Database Integration
-- **Schema**: Event storage with migrations in `migrations/` directory
-- **Operations**: Repository pattern via DatabaseManager class
-- **Transactions**: Atomic operations with context managers
-- **Indexing**: Optimized for timestamp-based queries
-- **Migrations**: Version-tracked schema updates
-
-## Command-Line Interface
-```bash
-# Basic usage
-python main.py config/config.yaml
-
-# Dry-run validation
-python main.py --config config.yaml --dry-run
-
-# Override settings
-python main.py --config config.yaml --log-level DEBUG --metrics-interval 30
-
-# Show version
-python main.py --version
-```
-
-## Enhanced IDE Development Workflow
-- **Story Creation**: SM agent drafts stories from epics
-- **Quality Gates**: QA agent provides risk assessment (*risk), test design (*design), and quality reviews (*review)
-- **Implementation**: Dev agent executes stories with comprehensive testing
-- **Iteration**: Address QA feedback and repeat cycle
-
-Focus on privacy-first design, Apple Silicon optimization, and robust error recovery in all implementations.
-
-## BMAD Development Workflow
-
-### Agent Usage Patterns
-- **@dev**: Code implementation, debugging, refactoring, and development best practices
-- **@qa**: Test architecture, quality gates, risk assessment (*risk, *design, *trace, *review)
-- **@architect**: System design, architecture decisions, and technical planning
-- **@pm**: Product requirements, user stories, and project planning
-- **@po**: Product ownership, backlog management, and story validation
-
-### Development Cycle
-1. **Planning Phase**: PRD → Architecture → Story Sharding (docs/stories/)
-2. **Development Phase**: Story implementation with @dev agent
-3. **Quality Phase**: @qa agent reviews with risk assessment and quality gates
-4. **Iteration**: Address feedback and repeat cycle
-
-### Documentation Structure
-- **PRD**: `docs/prd.md` - Product requirements and features
-- **Architecture**: `docs/architecture.md` - System design and technical decisions
-- **Stories**: `docs/stories/` - Sharded user stories with acceptance criteria
-- **QA Assessments**: `docs/qa/assessments/` - Risk profiles and test strategies
-- **QA Gates**: `docs/qa/gates/` - Quality gate decisions
-
-### Enhanced IDE Development Workflow
-- **Story Creation**: SM agent drafts stories from epics
-- **Quality Gates**: QA agent provides risk assessment (*risk), test design (*design), and quality reviews (*review)
-- **Implementation**: Dev agent executes stories with comprehensive testing
-- **Iteration**: Address QA feedback and repeat cycle
-
-Focus on privacy-first design, Apple Silicon optimization, and robust error recovery in all implementations.
