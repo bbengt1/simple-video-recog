@@ -94,3 +94,21 @@ class OllamaTimeoutError(VideoRecognitionError):
     """
 
     pass
+
+
+class DatabaseError(VideoRecognitionError):
+    """Database operation failed.
+
+    Raised when database operations fail due to connection issues,
+    SQL errors, constraint violations, or other database-related problems.
+    This includes SQLite-specific errors and general database access issues.
+
+    Examples:
+        - Database file corrupted or inaccessible
+        - SQL syntax errors in queries
+        - UNIQUE constraint violations
+        - Disk full preventing writes
+        - Database locked by another process
+    """
+
+    pass

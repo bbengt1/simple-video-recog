@@ -47,6 +47,11 @@ class Event(BaseModel):
         description="Path to annotated image",
         examples=["data/events/2025-11-08/evt_1699459335_a7b3c.jpg"]
     )
+    json_log_path: str = Field(
+        ...,
+        description="Path to JSON log file containing this event",
+        examples=["data/events/2025-11-08/events.json"]
+    )
     motion_confidence: Optional[float] = Field(
         default=None,
         ge=0.0,
@@ -83,6 +88,7 @@ class Event(BaseModel):
                 ],
                 "llm_description": "Person in blue shirt carrying brown package approaching front door",
                 "image_path": "data/events/2025-11-08/evt_1699459335_a7b3c.jpg",
+                "json_log_path": "data/events/2025-11-08/events.json",
                 "metadata": {
                     "coreml_inference_time": 0.05,
                     "llm_inference_time": 2.34,
