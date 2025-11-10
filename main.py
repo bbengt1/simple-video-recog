@@ -20,6 +20,7 @@ from core.motion_detector import MotionDetector
 from core.pipeline import FrameSampler, ProcessingPipeline
 from core.events import EventDeduplicator
 from core.image_annotator import ImageAnnotator
+from core.database import DatabaseManager
 from core.version import format_version_output
 from apple_platform.coreml_detector import CoreMLDetector
 from integrations.rtsp_client import RTSPCameraClient
@@ -119,6 +120,39 @@ def main():
 
         logger.info("Starting video recognition system...")
 
+        # Perform health checks
+        health_checker = HealthChecker(config)
+
+        # Handle dry-run mode (perform checks and exit)
+        if args.dry_run:
+            logger.info("Starting dry-run mode: Performing comprehensive system validation...")
+            result = health_checker.check_all(display_output=True)
+
+            if result.all_passed:
+                logger.info("Dry-run validation successful: All health checks passed.")
+                print("\n[DRY-RUN] ✓ All validations passed. System ready for processing.")
+                sys.exit(EXIT_SUCCESS)
+            else:
+                logger.error(f"Dry-run validation failed: {len(result.failed_checks)} failed, {len(result.warnings)} warnings.")
+                print(f"\n[DRY-RUN] ✗ Validation failed: {len(result.failed_checks)} checks failed, {len(result.warnings)} warnings.")
+                print("Please fix the issues above before starting the system.")
+                sys.exit(EXIT_CONFIG_INVALID)
+
+        # Normal mode: Initialize components after health checks pass
+        logger.info("Performing startup health checks...")
+        result = health_checker.check_all(display_output=False)
+
+        if not result.all_passed:
+            logger.error(
+                f"System health check failed: {len(result.failed_checks)} failed, {len(result.warnings)} warnings. "
+                "Please check the error messages above and fix any configuration or connectivity issues before restarting."
+            )
+            sys.exit(EXIT_ERROR)
+
+        # Initialize database manager (only after health checks pass)
+        database_manager = DatabaseManager(config.db_path)
+        database_manager.init_database()
+
         # Initialize components
         rtsp_client = RTSPCameraClient(config)
         motion_detector = MotionDetector(config)
@@ -127,22 +161,6 @@ def main():
         event_deduplicator = EventDeduplicator(config)
         ollama_client = OllamaClient(config)
         image_annotator = ImageAnnotator()
-
-        # Perform health checks
-        health_checker = HealthChecker(config, rtsp_client, motion_detector)
-
-        if not health_checker.run_checks():
-            logger.error(
-                "System health check failed. Please check the error messages above "
-                "and fix any configuration or connectivity issues before restarting."
-            )
-            sys.exit(EXIT_ERROR)
-
-        # Handle dry-run mode
-        if args.dry_run:
-            logger.info("Dry-run mode: Configuration and connectivity validation successful.")
-            print("Configuration and connectivity validation successful.")
-            sys.exit(EXIT_SUCCESS)
 
         # Initialize and start processing pipeline
         pipeline = ProcessingPipeline(
@@ -153,6 +171,7 @@ def main():
             event_deduplicator=event_deduplicator,
             ollama_client=ollama_client,
             image_annotator=image_annotator,
+            database_manager=database_manager,
             config=config
         )
 

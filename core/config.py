@@ -73,6 +73,9 @@ class SystemConfig(BaseModel):
     max_storage_gb: float = Field(
         default=4.0, gt=0, description="Maximum storage limit in GB"
     )
+    storage_check_interval: int = Field(
+        default=100, ge=1, description="Check storage usage every N events"
+    )
     min_retention_days: int = Field(
         default=7, ge=1, description="Minimum days to retain events"
     )
@@ -101,6 +104,7 @@ class SystemConfig(BaseModel):
                 "llm_timeout": 10,
                 "db_path": "data/events.db",
                 "max_storage_gb": 4.0,
+                "storage_check_interval": 100,
                 "min_retention_days": 7,
                 "log_level": "INFO",
                 "metrics_interval": 60,

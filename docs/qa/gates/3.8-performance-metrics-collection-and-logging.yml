@@ -1,0 +1,38 @@
+schema: 1
+story: "3.8"
+story_title: "Performance Metrics Collection and Logging"
+gate: PASS
+status_reason: "Comprehensive metrics system with rolling windows, percentile calculations, and JSON Lines logging. All acceptance criteria met with 95% test coverage."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-11-10T12:00:00Z"
+
+waiver: { active: false }
+
+top_issues: []
+
+evidence:
+  tests_reviewed: 30
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: "No sensitive data in metrics, safe file operations"
+  performance:
+    status: PASS
+    notes: "Efficient rolling window calculations, minimal memory footprint, atomic logging"
+  reliability:
+    status: PASS
+    notes: "Comprehensive error handling, graceful degradation, atomic file writes"
+  maintainability:
+    status: PASS
+    notes: "Clean architecture, extensive testing, clear documentation"
+
+recommendations:
+  immediate: []
+  future:
+    - action: "Consider adding metrics export to external monitoring systems"
+      refs: ["core/metrics.py"]

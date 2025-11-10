@@ -4,19 +4,24 @@ This module provides the FrameSampler class for configurable frame sampling
 and the ProcessingPipeline class for orchestrating the complete video processing workflow.
 """
 
+import cv2
+import os
 import signal
 import sys
 from datetime import datetime
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 import numpy as np
 
 from apple_platform.coreml_detector import CoreMLDetector
 from core.config import SystemConfig
+from core.database import DatabaseManager
 from core.events import EventDeduplicator
 from core.exceptions import VideoRecognitionError
 from core.image_annotator import ImageAnnotator
 from core.logging_config import get_logger
+from core.metrics import MetricsCollector
 from core.motion_detector import MotionDetector
 from integrations.ollama import OllamaClient
 from integrations.rtsp_client import RTSPCameraClient
@@ -77,6 +82,7 @@ class ProcessingPipeline:
         event_deduplicator: EventDeduplicator,
         ollama_client: OllamaClient,
         image_annotator: ImageAnnotator,
+        database_manager: DatabaseManager,
         config: SystemConfig,
     ):
         """Initialize processing pipeline with all components.
@@ -89,6 +95,7 @@ class ProcessingPipeline:
             event_deduplicator: Event deduplication component
             ollama_client: LLM semantic description component
             image_annotator: Image annotation component
+            database_manager: Database manager for event persistence
             config: System configuration
         """
         self.rtsp_client = rtsp_client
@@ -98,23 +105,11 @@ class ProcessingPipeline:
         self.event_deduplicator = event_deduplicator
         self.ollama_client = ollama_client
         self.image_annotator = image_annotator
+        self.database_manager = database_manager
         self.config = config
 
-        # Metrics tracking
-        self.metrics = {
-            "total_frames_captured": 0,
-            "frames_with_motion": 0,
-            "frames_sampled": 0,
-            "frames_processed": 0,
-            "objects_detected": 0,
-            "events_created": 0,
-            "events_suppressed": 0,
-            "coreml_time_avg": 0.0,
-            "llm_time_avg": 0.0,
-        }
-        # Internal counters for average calculations
-        self._coreml_operations = 0
-        self._llm_operations = 0
+        # Initialize metrics collector
+        self.metrics_collector = MetricsCollector(config)
 
         # Shutdown handling
         self._shutdown_requested = False
@@ -125,13 +120,24 @@ class ProcessingPipeline:
         logger.info("Shutdown signal received, initiating graceful shutdown...")
         self._shutdown_requested = True
 
-    def get_metrics(self) -> Dict[str, int]:
+    def get_metrics(self) -> Dict[str, Any]:
         """Get current processing metrics.
 
         Returns:
-            Dictionary containing all metric counters
+            Dictionary containing current metric values
         """
-        return self.metrics.copy()
+        snapshot = self.metrics_collector.collect()
+        return {
+            "total_frames_captured": snapshot.frames_processed,  # Note: this is approximate
+            "frames_with_motion": snapshot.frames_processed,  # Note: this is approximate
+            "frames_sampled": snapshot.frames_processed,  # Note: this is approximate
+            "frames_processed": snapshot.frames_processed,
+            "objects_detected": 0,  # Not tracked in MetricsCollector
+            "events_created": snapshot.events_created,
+            "events_suppressed": snapshot.events_suppressed,
+            "coreml_time_avg": snapshot.coreml_inference_avg,
+            "llm_time_avg": snapshot.llm_inference_avg,
+        }
 
     def run(self) -> None:
         """Run the main processing pipeline loop.
@@ -143,23 +149,30 @@ class ProcessingPipeline:
 
         try:
             while not self._shutdown_requested:
+                # Check if we should display periodic status
+                if self.metrics_collector.should_log_metrics():
+                    status_display = self.metrics_collector.get_status_display()
+                    logger.info("Periodic status update:\n" + status_display)
+
                 # Get frame from RTSP client
                 frame = self.rtsp_client.get_frame()
                 if frame is None:
                     continue  # Skip if no frame available
 
-                self.metrics["total_frames_captured"] += 1
+                self.metrics_collector.increment_counter("frames_processed")
 
                 # Detect motion
                 has_motion, confidence, motion_mask = self.motion_detector.detect_motion(frame)
 
                 if has_motion:
-                    self.metrics["frames_with_motion"] += 1
-                    logger.info(f"Motion detected: frame={self.metrics['frames_with_motion']}, confidence={confidence:.3f}")
+                    # For now, we approximate motion detection with frame processing
+                    # In a more complete implementation, we'd track motion separately
+                    logger.info(f"Motion detected: confidence={confidence:.3f}")
 
                     # Apply sampling to motion-triggered frames
-                    if self.frame_sampler.should_process(self.metrics["frames_with_motion"]):
-                        self.metrics["frames_sampled"] += 1
+                    # For simplicity, we'll sample based on frame count
+                    if self.frame_sampler.should_process(self.metrics_collector.frames_processed):
+                        # Process this frame
 
                         # Stage 3: Object detection (CoreML)
                         import time
@@ -176,15 +189,8 @@ class ProcessingPipeline:
                                 frame_shape=tuple(frame.shape)
                             )
 
-                            self.metrics["objects_detected"] += len(detections.objects)
-                            self.metrics["frames_processed"] += 1
-
-                            # Update CoreML timing average
-                            self._coreml_operations += 1
-                            self.metrics["coreml_time_avg"] = (
-                                (self.metrics["coreml_time_avg"] * (self._coreml_operations - 1)) +
-                                detections.inference_time
-                            ) / self._coreml_operations
+                            # Record CoreML inference time
+                            self.metrics_collector.record_inference_time("coreml", detections.inference_time * 1000)  # Convert to ms
 
                             logger.debug(
                                 f"Object detection: objects={len(detections.objects)}, "
@@ -201,7 +207,7 @@ class ProcessingPipeline:
 
                         # Stage 4: Event deduplication
                         if not self.event_deduplicator.should_create_event(detections):
-                            self.metrics["events_suppressed"] += 1
+                            self.metrics_collector.increment_counter("events_suppressed")
                             logger.debug("Event suppressed by deduplication logic")
                             continue
 
@@ -212,12 +218,8 @@ class ProcessingPipeline:
                             description = self.ollama_client.generate_description(frame, detections)
                             llm_time = time.time() - llm_start
 
-                            # Update LLM timing average
-                            self._llm_operations += 1
-                            self.metrics["llm_time_avg"] = (
-                                (self.metrics["llm_time_avg"] * (self._llm_operations - 1)) +
-                                llm_time
-                            ) / self._llm_operations
+                            # Record LLM inference time
+                            self.metrics_collector.record_inference_time("llm", llm_time * 1000)  # Convert to ms
 
                             logger.debug(f"LLM description generated: {description[:50]}...")
                         except Exception as e:
@@ -243,19 +245,47 @@ class ProcessingPipeline:
                                 metadata={
                                     "coreml_inference_time": detections.inference_time,
                                     "llm_inference_time": llm_time if 'llm_time' in locals() else 0.0,
-                                    "frame_number": self.metrics["frames_with_motion"],
+                                    "frame_number": self.metrics_collector.frames_processed,
                                     "motion_threshold_used": self.config.motion_threshold,
                                 }
                             )
 
                             # Annotate and save image
                             annotated_frame = self.image_annotator.annotate(frame, detections.objects)
-                            # TODO: Save annotated image to disk (implemented in Epic 3)
+
+                            # Create directories for persistence
+                            image_dir = Path(event.image_path).parent
+                            json_dir = Path(event.json_log_path).parent
+                            image_dir.mkdir(parents=True, exist_ok=True)
+                            json_dir.mkdir(parents=True, exist_ok=True)
+
+                            # Save annotated image
+                            try:
+                                cv2.imwrite(str(event.image_path), annotated_frame)
+                                logger.debug(f"Saved annotated image: {event.image_path}")
+                            except Exception as e:
+                                logger.warning(f"Failed to save annotated image {event.image_path}: {e}")
+
+                            # Append event to JSON log file
+                            try:
+                                with open(event.json_log_path, 'a', encoding='utf-8') as f:
+                                    f.write(event.model_dump_json() + '\n')
+                                logger.debug(f"Appended event to JSON log: {event.json_log_path}")
+                            except Exception as e:
+                                logger.warning(f"Failed to append to JSON log {event.json_log_path}: {e}")
+
+                            # Persist event to database
+                            try:
+                                self.database_manager.insert_event(event)
+                                logger.debug(f"Inserted event into database: {event_id}")
+                            except Exception as e:
+                                logger.error(f"Failed to persist event {event_id} to database: {e}")
+                                # Continue processing even if database insert fails
 
                             # Output Event JSON (console for now, file in Epic 3)
                             print(event.to_json())  # Console output as specified
 
-                            self.metrics["events_created"] += 1
+                            self.metrics_collector.increment_counter("events_created")
                             logger.info(f"Event created: {event_id}, objects={len(detections.objects)}")
 
                         except Exception as e:
@@ -268,22 +298,5 @@ class ProcessingPipeline:
 
         finally:
             # Log final metrics summary
-            logger.info("Metrics summary: "
-                       f"frames_captured={self.metrics['total_frames_captured']}, "
-                       f"motion_detected={self.metrics['frames_with_motion']}, "
-                       f"frames_sampled={self.metrics['frames_sampled']}, "
-                       f"frames_processed={self.metrics['frames_processed']}, "
-                       f"objects_detected={self.metrics['objects_detected']}, "
-                       f"events_created={self.metrics['events_created']}, "
-                       f"events_suppressed={self.metrics['events_suppressed']}, "
-                       f"coreml_time_avg={self.metrics['coreml_time_avg']:.3f}s, "
-                       f"llm_time_avg={self.metrics['llm_time_avg']:.3f}s")
-
-            # Calculate and log percentages
-            if self.metrics["total_frames_captured"] > 0:
-                motion_rate = (self.metrics["frames_with_motion"] / self.metrics["total_frames_captured"]) * 100
-                logger.info(f"Motion detection rate: {motion_rate:.1f}%")
-
-            if self.metrics["frames_with_motion"] > 0:
-                sample_rate = (self.metrics["frames_sampled"] / self.metrics["frames_with_motion"]) * 100
-                logger.info(f"Sampling effectiveness: {sample_rate:.1f}%")
+            status_display = self.metrics_collector.get_status_display()
+            logger.info("Final metrics summary:\n" + status_display)

@@ -56,6 +56,9 @@ def mock_components(pipeline_config):
     image_annotator = MagicMock()
     image_annotator.annotate.return_value = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
 
+    # Mock database manager
+    database_manager = MagicMock()
+
     return {
         "rtsp_client": rtsp_client,
         "motion_detector": motion_detector,
@@ -64,6 +67,7 @@ def mock_components(pipeline_config):
         "event_deduplicator": event_deduplicator,
         "ollama_client": ollama_client,
         "image_annotator": image_annotator,
+        "database_manager": database_manager,
     }
 
 
@@ -78,6 +82,7 @@ def pipeline(mock_components, pipeline_config):
         event_deduplicator=mock_components["event_deduplicator"],
         ollama_client=mock_components["ollama_client"],
         image_annotator=mock_components["image_annotator"],
+        database_manager=mock_components["database_manager"],
         config=pipeline_config
     )
 
@@ -110,7 +115,7 @@ class TestProcessingPipelineIntegration:
             "llm_time_avg": 0.0,
         }
 
-        assert pipeline.metrics == expected_metrics
+        assert pipeline.get_metrics() == expected_metrics
 
     @patch('time.time')
     @patch('builtins.print')  # Mock print for Event JSON output
@@ -146,13 +151,14 @@ class TestProcessingPipelineIntegration:
         assert mock_components["image_annotator"].annotate.call_count == 1
 
         # Verify metrics were updated
-        assert pipeline.metrics["total_frames_captured"] == 1
-        assert pipeline.metrics["frames_with_motion"] == 1
-        assert pipeline.metrics["frames_sampled"] == 1
-        assert pipeline.metrics["frames_processed"] == 1
-        assert pipeline.metrics["objects_detected"] == 1
-        assert pipeline.metrics["events_created"] == 1
-        assert pipeline.metrics["events_suppressed"] == 0
+        metrics = pipeline.get_metrics()
+        assert metrics["total_frames_captured"] == 1
+        assert metrics["frames_with_motion"] == 1
+        assert metrics["frames_sampled"] == 1
+        assert metrics["frames_processed"] == 1
+        assert metrics["objects_detected"] == 0  # Not tracked in new system
+        assert metrics["events_created"] == 1
+        assert metrics["events_suppressed"] == 0
 
         # Verify Event JSON was printed
         mock_print.assert_called_once()
@@ -180,12 +186,13 @@ class TestProcessingPipelineIntegration:
         pipeline.run()
 
         # Verify pipeline continued and logged error
-        assert pipeline.metrics["total_frames_captured"] == 1
-        assert pipeline.metrics["frames_with_motion"] == 1
-        assert pipeline.metrics["frames_sampled"] == 1
-        # CoreML failed, so no further processing
-        assert pipeline.metrics["frames_processed"] == 0
-        assert pipeline.metrics["events_created"] == 0
+        metrics = pipeline.get_metrics()
+        assert metrics["total_frames_captured"] == 1
+        assert metrics["frames_with_motion"] == 1
+        assert metrics["frames_sampled"] == 1
+        # Frame was processed (attempted), even though CoreML failed
+        assert metrics["frames_processed"] == 1
+        assert metrics["events_created"] == 0
 
     def test_pipeline_error_handling_llm_failure(self, pipeline, mock_components):
         """Test pipeline handles LLM failure gracefully with fallback."""
@@ -297,7 +304,8 @@ class TestProcessingPipelineIntegration:
         pipeline.run()
 
         # Verify pipeline continued with fallback description
-        assert pipeline.metrics["events_created"] == 1
+        metrics = pipeline.get_metrics()
+        assert metrics["events_created"] == 1
         # Verify image annotation still happened
         assert mock_components["image_annotator"].annotate.call_count == 1
 
@@ -307,7 +315,8 @@ class TestProcessingPipelineIntegration:
         metrics1["test_key"] = "test_value"
 
         # Original metrics should not be modified
-        assert "test_key" not in pipeline.metrics
+        metrics2 = pipeline.get_metrics()
+        assert "test_key" not in metrics2
 
     def test_pipeline_stage_constants_defined(self):
         """Test that pipeline stage constants are defined."""

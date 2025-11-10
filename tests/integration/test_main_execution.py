@@ -46,8 +46,8 @@ def test_main_with_valid_config():
     config_file = create_test_config()
 
     try:
-        # Start the process
-        cmd = [sys.executable, "main.py", "--config", config_file]
+        # Start the process in dry-run mode to see health check output
+        cmd = [sys.executable, "main.py", "--config", config_file, "--dry-run"]
         process = subprocess.Popen(
             cmd,
             cwd=Path(__file__).parent.parent.parent,
@@ -60,13 +60,13 @@ def test_main_with_valid_config():
         stdout, stderr = process.communicate(timeout=10)
 
         # Verify process exited with health check failure (expected)
-        assert process.returncode == 1, f"Process should exit with code 1 due to health check failure, got {process.returncode}"
+        assert process.returncode == 2, f"Process should exit with code 2 due to health check failure in dry-run mode, got {process.returncode}"
 
         # Verify expected log messages in output
         combined_output = stdout + stderr
         assert "Starting video recognition system..." in combined_output
-        assert "System health check failed" in combined_output
-        assert "RTSP stream: Not connected" in combined_output
+        assert "Dry-run validation failed" in combined_output
+        assert "RTSP connection failed" in combined_output
 
     finally:
         # Clean up temp file

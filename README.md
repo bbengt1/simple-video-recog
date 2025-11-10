@@ -397,6 +397,215 @@ video-recognition/
 └── scripts/             # Setup and maintenance scripts
 ```
 
+## Troubleshooting
+
+### Health Check Validation
+
+The system includes comprehensive startup health checks that validate all dependencies before processing begins. Use the `--dry-run` flag to validate your configuration without starting the processing pipeline:
+
+```bash
+# Validate configuration and dependencies
+python main.py --dry-run --config config/config.yaml
+
+# Expected successful output:
+[STARTUP] Video Recognition System v1.0.0
+[CONFIG] ✓ Configuration loaded: camera_name
+[PLATFORM] ✓ Platform validated: macOS 14.2 on arm64
+[PYTHON] ✓ Python version: 3.12.0
+[DEPENDENCIES] ✓ Dependencies: All required packages installed
+[MODELS] ✓ CoreML: model loaded
+[OLLAMA] ✓ Ollama service running, model 'llava:7b' ready
+[CAMERA] ✓ RTSP connected: 1920x1080 @ 30fps (H264)
+[STORAGE] ✓ Storage: 2.1GB / 4GB (52%)
+[READY] ✓ All health checks passed
+
+# Exit code 0 = success, 2 = validation failed
+```
+
+### Common Issues and Solutions
+
+#### ❌ Configuration File Not Found
+```
+Error: Configuration file not found: config/config.yaml
+Please create a config file by copying config.example.yaml:
+  cp config/config.example.yaml config/config.yaml
+```
+
+**Solution:**
+```bash
+# Copy the example configuration
+cp config/config.example.yaml config/config.yaml
+
+# Edit the configuration with your camera details
+nano config/config.yaml
+```
+
+#### ❌ Configuration Validation Error
+```
+Configuration Validation Error in config/config.yaml:
+1 validation error for SystemConfig
+camera_rtsp_url
+  Field required [type=missing, input_value={...}, input_type=dict]
+```
+
+**Solution:** Check your YAML syntax and ensure all required fields are present. Required fields include:
+- `camera_rtsp_url`: RTSP stream URL
+- `camera_id`: Unique camera identifier
+- `ollama_model`: LLM model name
+
+#### ❌ Platform Not Supported
+```
+[PLATFORM] ✗ Platform: unsupported
+```
+
+**Solution:** This system requires:
+- macOS 13+ (Ventura or later)
+- Apple Silicon processor (M1, M2, or M3)
+
+#### ❌ Python Version Too Old
+```
+[PYTHON] ✗ Python error: Python 3.10+ required, detected 3.9.7
+```
+
+**Solution:** Upgrade Python to version 3.10 or higher:
+```bash
+# Install Python 3.12 via Homebrew
+brew install python@3.12
+
+# Create new virtual environment with Python 3.12
+python3.12 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+#### ❌ Dependency Errors
+```
+[DEPENDENCIES] ✗ Dependency errors: OpenCV 4.12.0 < 4.8.1
+```
+
+**Solution:** Update dependencies:
+```bash
+# Upgrade all packages
+pip install --upgrade -r requirements.txt
+
+# Or upgrade specific package
+pip install --upgrade opencv-python
+```
+
+#### ❌ CoreML Model Not Found
+```
+[MODELS] ✗ CoreML model not found: models/yolov8n.mlmodel
+```
+
+**Solution:** Download and place CoreML models:
+```bash
+# Create models directory
+mkdir -p models
+
+# Download YOLOv8n CoreML model
+# Visit: https://github.com/ultralytics/yolov8/releases
+# Download: yolov8n.mlmodel and place in models/ directory
+```
+
+#### ❌ Ollama Service Not Running
+```
+[OLLAMA] ✗ Ollama service check failed: Connection refused
+```
+
+**Solution:** Start Ollama service:
+```bash
+# Start Ollama in background
+ollama serve
+
+# In another terminal, verify service is running
+curl http://localhost:11434/api/tags
+
+# Pull required vision model
+ollama pull llava:7b
+```
+
+#### ❌ RTSP Connection Failed
+```
+[CAMERA] ✗ RTSP connection timeout: Unable to connect within 10s
+```
+
+**Solutions:**
+1. **Check camera URL:** Verify RTSP URL format and credentials
+2. **Network connectivity:** Ensure camera is accessible from your Mac
+3. **Firewall settings:** Check if RTSP port (usually 554) is blocked
+4. **Camera compatibility:** Ensure camera supports RTSP streaming
+
+**Test RTSP connection:**
+```bash
+# Test with VLC or ffplay
+ffplay rtsp://username:password@camera_ip:554/stream
+
+# Or use OpenCV test
+python -c "
+import cv2
+cap = cv2.VideoCapture('rtsp://username:password@camera_ip:554/stream')
+print('Connected:', cap.isOpened())
+cap.release()
+"
+```
+
+#### ❌ Storage Limit Exceeded
+```
+[STORAGE] ✗ Storage limit exceeded: 615.8GB used, limit is 4.0GB
+```
+
+**Solutions:**
+1. **Increase storage limit** in config:
+   ```yaml
+   max_storage_gb: 10.0  # Increase from default 4.0
+   ```
+
+2. **Clean up old data:**
+   ```bash
+   # Remove old event data
+   rm -rf data/events/*
+
+   # Remove old logs
+   rm -f logs/*.log
+   ```
+
+3. **Move data directory** to larger storage:
+   ```yaml
+   db_path: /Volumes/ExternalDrive/data/events.db
+   ```
+
+#### ❌ File Permission Denied
+```
+[PERMISSIONS] ✗ Write permissions denied for directory: data
+```
+
+**Solution:** Fix directory permissions:
+```bash
+# Fix permissions for required directories
+chmod 755 data/
+chmod 755 logs/
+chmod 755 config/
+
+# Or change ownership if needed
+sudo chown -R $USER data/ logs/ config/
+```
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. **Run dry-run validation:** `python main.py --dry-run --config config/config.yaml`
+2. **Check logs:** Review `logs/` directory for detailed error information
+3. **Verify environment:** Ensure all prerequisites are installed and configured
+4. **Test components individually:** Use the health checks to isolate which component is failing
+
+### Performance Issues
+
+- **High CPU usage:** Reduce `frame_sample_rate` in config (default: 10)
+- **Slow inference:** Ensure CoreML model is compatible with Neural Engine
+- **Storage filling quickly:** Increase `max_storage_gb` or reduce retention period
+- **RTSP lag:** Check network connection and camera settings
+
 ## License
 
 *Placeholder*

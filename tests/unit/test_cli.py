@@ -118,7 +118,7 @@ class TestCLIArgumentParsing:
         with patch('builtins.print') as mock_print:
             main.main()
 
-            mock_print.assert_called_with("Configuration and connectivity validation successful.")
+            mock_print.assert_called_with("\n[DRY-RUN] ✓ All validations passed. System ready for processing.")
             mock_exit.assert_called_once_with(0)
 
     @patch('main.parse_arguments')
