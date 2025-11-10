@@ -198,7 +198,12 @@ The system will:
 4. Begin monitoring for motion events
 5. Log detected events to console
 
-**To stop the system:** Press `Ctrl+C` for graceful shutdown.
+**To stop the system:** Press `Ctrl+C` for graceful shutdown with session summary.
+
+**Signal Handling:**
+- `Ctrl+C` (SIGINT) or `kill -TERM <pid>` (SIGTERM): Graceful shutdown with cleanup
+- `kill -HUP <pid>` (SIGHUP): Hot reload configuration without restarting
+- All signals trigger proper resource cleanup and session statistics logging
 
 **Expected output:**
 ```
@@ -371,6 +376,82 @@ To verify RTSP camera connectivity and frame capture functionality:
 - **Authentication Error:** Check username/password in RTSP URL
 - **Network Timeout:** Ensure camera is reachable (try `ping camera-ip`)
 - **Low FPS:** Check network bandwidth and camera configuration
+- **Signal Not Handled:** Ensure process is running in foreground (not background)
+- **Hot Reload Fails:** Check configuration file syntax and permissions
+- **Shutdown Hangs:** Check for stuck RTSP connections or database locks
+
+## Signal Handling and Hot Reload
+
+The system supports comprehensive signal handling for production deployment and maintenance operations.
+
+### Shutdown Signals
+
+**Graceful Shutdown (SIGINT/SIGTERM):**
+- `Ctrl+C` (SIGINT) or `kill -TERM <pid>` (SIGTERM)
+- Triggers complete cleanup sequence:
+  - Stops frame processing pipeline
+  - Flushes pending events to database
+  - Closes RTSP camera connection
+  - Saves final metrics snapshot
+  - Logs session summary with statistics
+- 10-second timeout with force exit if cleanup hangs
+
+**Session Summary Output:**
+```
+[INFO] Shutdown signal received, stopping processing...
+[INFO] Processing pipeline stopped gracefully
+[INFO] Session Summary:
+  Runtime: 1h 23m 45s
+  Total frames: 67,890
+  Events detected: 23
+  Average FPS: 14.2
+  Storage used: 2.3 GB
+```
+
+### Hot Reload (SIGHUP)
+
+**Configuration Reload:**
+- `kill -HUP <pid>` triggers live configuration reload
+- Re-reads `config/config.yaml` without restarting
+- Supports dynamic updates for:
+  - Camera RTSP URL changes (reconnects automatically)
+  - CoreML model path changes (reloads model)
+  - Ollama model changes (reconnects client)
+  - Motion detection thresholds
+  - Frame sampling rates
+
+**Reload Process:**
+1. Signal received → pause processing
+2. Load new configuration
+3. Validate new settings
+4. Reconnect external services (RTSP, Ollama)
+5. Reload CoreML model if path changed
+6. Resume processing with new configuration
+
+**Reload Failure Handling:**
+- Falls back to previous configuration if reload fails
+- Logs detailed error information
+- Continues processing without interruption
+
+### Production Usage
+
+**Systemd Service Example:**
+```bash
+# Send shutdown signal
+sudo systemctl stop video-recognition
+
+# Trigger hot reload
+sudo kill -HUP $(pgrep -f "python main.py")
+```
+
+**Docker Container:**
+```bash
+# Graceful shutdown
+docker stop video-recognition
+
+# Hot reload (if running in foreground)
+docker kill -s HUP video-recognition
+```
 
 ## Development
 

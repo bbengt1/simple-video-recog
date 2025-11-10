@@ -238,6 +238,7 @@ class DryRunValidator:
             # Capture 10 frames for testing
             frames_captured = 0
             frame_times = []
+            width, height = 0, 0  # Initialize resolution variables
 
             for i in range(10):
                 frame_start = time.time()

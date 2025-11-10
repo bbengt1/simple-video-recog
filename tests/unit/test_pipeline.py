@@ -95,9 +95,11 @@ class TestProcessingPipeline:
         mock_database = Mock(spec=DatabaseManager)
 
         # Act
+        mock_signal_handler = Mock()
         pipeline = ProcessingPipeline(
             mock_rtsp, mock_motion, mock_sampler, mock_coreml,
-            mock_deduplicator, mock_ollama, mock_image_annotator, mock_database, config
+            mock_deduplicator, mock_ollama, mock_image_annotator, mock_database,
+            mock_signal_handler, config
         )
 
         # Assert
@@ -127,9 +129,11 @@ class TestProcessingPipeline:
         mock_image_annotator = Mock(spec=ImageAnnotator)
         mock_database = Mock(spec=DatabaseManager)
 
+        mock_signal_handler = Mock()
         pipeline = ProcessingPipeline(
             mock_rtsp, mock_motion, mock_sampler, mock_coreml,
-            mock_deduplicator, mock_ollama, mock_image_annotator, mock_database, config
+            mock_deduplicator, mock_ollama, mock_image_annotator, mock_database,
+            mock_signal_handler, config
         )
         metrics = pipeline.get_metrics()
 
@@ -159,9 +163,11 @@ class TestProcessingPipeline:
         mock_motion.detect_motion.return_value = (True, 0.8, np.zeros((480, 640), dtype=np.uint8))
         mock_sampler.should_process.return_value = True
 
+        mock_signal_handler = Mock()
         pipeline = ProcessingPipeline(
             mock_rtsp, mock_motion, mock_sampler, mock_coreml,
-            mock_deduplicator, mock_ollama, mock_image_annotator, mock_database, config
+            mock_deduplicator, mock_ollama, mock_image_annotator, mock_database,
+            mock_signal_handler, config
         )
 
         # Act: Simulate processing a few frames by directly setting metrics collector state

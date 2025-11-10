@@ -17,6 +17,8 @@ This project uses the BMAD (Make AI Do) method for AI-driven planning and develo
 - **Dependency Injection**: Components receive dependencies via constructor (e.g., `ProcessingPipeline(rtsp_client, motion_detector, frame_sampler, config)`)
 - **Pydantic Validation**: All configuration and data models use Pydantic for type safety and validation
 - **Structured Logging**: Use `core.logging_config.get_logger(__name__)` for consistent ISO 8601 timestamps and module names
+- **Repository Pattern**: DatabaseManager abstracts SQLite operations behind clean interface
+- **Observer Pattern**: Custom state management for frontend (Phase 2) with Observer pattern
 
 ## Critical Developer Workflows
 
@@ -39,6 +41,32 @@ open htmlcov/index.html
 - Target 70%+ test coverage across core modules
 - Use type hints and comprehensive docstrings
 - Follow Google-style docstrings
+
+### Testing Patterns
+```bash
+# Run specific test categories
+pytest tests/unit/test_config.py -v                    # Unit tests for config validation
+pytest tests/integration/test_pipeline.py -v          # Integration tests for full pipeline
+pytest tests/unit/test_coreml_detector.py -v          # CoreML inference tests
+
+# Run with coverage for specific modules
+pytest --cov=core.config --cov=core.events -v
+
+# Run performance tests
+pytest tests/performance/ -v --tb=short
+```
+
+### Development Commands
+```bash
+# Quick validation without running full pipeline
+python main.py --dry-run --config config/config.yaml
+
+# Debug mode with verbose logging
+python main.py --config config/config.yaml --log-level DEBUG
+
+# Override config values from command line
+python main.py --config config/config.yaml --motion-threshold 0.3 --frame-sample-rate 10
+```
 
 ### Local Development Setup
 ```bash
@@ -105,6 +133,32 @@ event_id = f"evt_{int(time.time() * 1000)}_{secrets.token_hex(2)}"
 - `docs/architecture.md`: System architecture documentation
 - `docs/stories/`: Sharded user stories from BMAD workflow
 
+### Module-Specific Patterns
+
+**Core Modules (`core/`):**
+- Business logic only, no platform-specific code
+- Use dependency injection for all external dependencies
+- Include comprehensive type hints and docstrings
+- Follow repository pattern for data access
+
+**Platform Modules (`apple_platform/`):**
+- Apple Silicon and macOS-specific implementations
+- Abstract interfaces defined in `core/`
+- CoreML and Metal-specific optimizations
+- Hardware compatibility validation
+
+**Integration Modules (`integrations/`):**
+- External service clients (RTSP, Ollama, etc.)
+- Error handling with exponential backoff
+- Connection pooling and health checks
+- Mock implementations for testing
+
+**Test Organization:**
+- `tests/unit/`: Individual component tests with mocks
+- `tests/integration/`: End-to-end pipeline tests
+- `tests/performance/`: Benchmarking and NFR validation
+- Mirror source structure (e.g., `tests/unit/test_config.py`)
+
 ## Common Patterns
 
 ### Component Initialization
@@ -158,11 +212,88 @@ with db.conn:
     db.insert_event(event)
 ```
 
+### Signal Handling and Graceful Shutdown
+```python
+# Handle SIGINT/SIGTERM for graceful shutdown
+import signal
+
+shutdown_requested = False
+
+def signal_handler(signum, frame):
+    global shutdown_requested
+    logger.info("Shutdown signal received, stopping processing...")
+    shutdown_requested = True
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+```
+
+### Health Checks and Startup Validation
+```python
+# Comprehensive startup validation
+def perform_health_checks(config: SystemConfig) -> bool:
+    checks = [
+        ("Configuration", validate_config(config)),
+        ("CoreML Model", validate_coreml_model(config.coreml_model_path)),
+        ("Ollama Service", check_ollama_service(config.ollama_base_url)),
+        ("RTSP Camera", test_rtsp_connection(config.camera_rtsp_url)),
+        ("Storage", check_storage_limits(config.max_storage_gb)),
+    ]
+
+    all_passed = True
+    for check_name, passed in checks:
+        status = "✓" if passed else "✗"
+        logger.info(f"[{status}] {check_name}")
+        all_passed &= passed
+
+    return all_passed
+```
+
+### Custom Exceptions
+```python
+# Use specific exception types for different failure modes
+class RTSPConnectionError(Exception):
+    """Failed to connect to RTSP camera stream."""
+
+class CoreMLLoadError(Exception):
+    """Failed to load or validate CoreML model."""
+
+class VideoRecognitionError(Exception):
+    """Generic video recognition processing error."""
+
+class OllamaConnectionError(Exception):
+    """Failed to connect to Ollama LLM service."""
+```
+
 ## Integration Points
-- **RTSP Cameras**: OpenCV VideoCapture with background thread capture and reconnection logic
-- **Ollama LLM**: HTTP API at localhost:11434 with vision models (llava, moondream)
-- **CoreML Models**: .mlmodel files optimized for Apple Neural Engine with compatibility validation
-- **SQLite Database**: Event storage with schema migrations and foreign key constraints
+
+### RTSP Camera Integration
+- **Client**: OpenCV VideoCapture with background thread capture and reconnection logic
+- **Connection**: RTSP URL format: `rtsp://username:password@ip:port/stream`
+- **Reconnection**: Exponential backoff (1s, 2s, 4s, 8s max) on connection failures
+- **Error Handling**: RTSPConnectionError for network/camera issues
+- **Frame Queue**: Max 100 frames to prevent memory overflow
+
+### Ollama LLM Integration
+- **API**: HTTP client to localhost:11434 with vision models (llava, moondream)
+- **Timeout**: 10 seconds configurable via `llm_timeout`
+- **Fallback**: Generic descriptions when LLM fails: "Detected: {object_labels}"
+- **Error Handling**: OllamaConnectionError with retry logic
+- **Prompt Template**: "Describe what is happening in this image. Focus on: {object_labels}"
+
+### CoreML Model Integration
+- **Format**: .mlmodel files optimized for Apple Neural Engine
+- **Validation**: ANE compatibility checking at startup
+- **Performance**: Target <100ms inference on M1/M2 hardware
+- **Input**: RGB frames (convert from OpenCV BGR)
+- **Error Handling**: CoreMLLoadError for model loading failures
+
+### SQLite Database Integration
+- **Schema**: Event storage with migrations in `migrations/` directory
+- **Operations**: Repository pattern via DatabaseManager class
+- **Transactions**: Atomic operations with context managers
+- **Indexing**: Optimized for timestamp-based queries
+- **Migrations**: Version-tracked schema updates
 
 ## Command-Line Interface
 ```bash
@@ -178,6 +309,14 @@ python main.py --config config.yaml --log-level DEBUG --metrics-interval 30
 # Show version
 python main.py --version
 ```
+
+## Enhanced IDE Development Workflow
+- **Story Creation**: SM agent drafts stories from epics
+- **Quality Gates**: QA agent provides risk assessment (*risk), test design (*design), and quality reviews (*review)
+- **Implementation**: Dev agent executes stories with comprehensive testing
+- **Iteration**: Address QA feedback and repeat cycle
+
+Focus on privacy-first design, Apple Silicon optimization, and robust error recovery in all implementations.
 
 ## BMAD Development Workflow
 

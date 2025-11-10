@@ -82,6 +82,7 @@ class TestCLIArgumentParsing:
     @patch('main.setup_logging')
     @patch('main.HealthChecker')
     @patch('main.RTSPCameraClient')
+    @patch('main.DryRunValidator')
     @patch('main.MotionDetector')
     @patch('main.FrameSampler')
     @patch('main.CoreMLDetector')
@@ -92,7 +93,7 @@ class TestCLIArgumentParsing:
     @patch('sys.exit')
     def test_dry_run_mode_exits_after_validation(self, mock_exit, mock_pipeline, mock_image_annotator, mock_ollama,
                                                 mock_deduplicator, mock_coreml, mock_frame_sampler,
-                                                mock_motion, mock_rtsp, mock_health, mock_setup_logging,
+                                                mock_motion, mock_rtsp, mock_dry_run_validator, mock_health, mock_setup_logging,
                                                 mock_load_config, mock_parse_args):
         """Test that --dry-run validates and exits without starting pipeline."""
         import main
@@ -106,8 +107,23 @@ class TestCLIArgumentParsing:
         mock_args.metrics_interval = None
         mock_parse_args.return_value = mock_args
 
-        # Mock config
-        mock_config = MagicMock()
+        # Mock config with real values to avoid MagicMock formatting issues
+        from core.config import SystemConfig
+        mock_config = SystemConfig(
+            camera_id="test_camera",
+            camera_rtsp_url="rtsp://test:test@127.0.0.1:554/test",
+            coreml_model_path="/tmp/test.mlmodel",
+            ollama_base_url="http://localhost:11434",
+            ollama_model="test",
+            motion_threshold=0.5,
+            frame_sample_rate=5,
+            blacklist_objects=[],
+            db_path="/tmp/test.db",
+            max_storage_gb=10.0,
+            min_retention_days=7,
+            log_level="INFO",
+            metrics_interval=60
+        )
         mock_load_config.return_value = mock_config
 
         # Mock successful health check
@@ -115,10 +131,18 @@ class TestCLIArgumentParsing:
         mock_health_instance.run_checks.return_value = True
         mock_health.return_value = mock_health_instance
 
+        # Mock successful dry run validation
+        mock_dry_run_instance = MagicMock()
+        mock_dry_run_instance.run_full_validation.return_value = True
+        mock_dry_run_instance.print_summary.return_value = None  # Mock print_summary to do nothing
+        mock_dry_run_validator.return_value = mock_dry_run_instance
+
         with patch('builtins.print') as mock_print:
             main.main()
 
-            mock_print.assert_called_with("\n[DRY-RUN] ✓ All validations passed. System ready for processing.")
+            # Check that the success message was printed
+            print_calls = [call.args[0] for call in mock_print.call_args_list]
+            assert any("✓ All validations passed. System ready for production." in call for call in print_calls)
             mock_exit.assert_called_once_with(0)
 
     @patch('main.parse_arguments')

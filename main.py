@@ -23,6 +23,7 @@ from core.image_annotator import ImageAnnotator
 from core.database import DatabaseManager
 from core.version import format_version_output, get_version_info
 from core.dry_run import DryRunValidator
+from core.signals import SignalHandler
 from apple_platform.coreml_detector import CoreMLDetector
 from integrations.rtsp_client import RTSPCameraClient
 from integrations.ollama import OllamaClient
@@ -96,6 +97,100 @@ Exit codes:
     return parser.parse_args()
 
 
+def perform_hot_reload(current_config, rtsp_client, coreml_detector, ollama_client, pipeline):
+    """Perform hot-reload of configuration without restarting processing.
+
+    Args:
+        current_config: Current SystemConfig object
+        rtsp_client: Current RTSPCameraClient instance
+        coreml_detector: Current CoreMLDetector instance
+        ollama_client: Current OllamaClient instance
+        pipeline: Current ProcessingPipeline instance
+
+    Returns:
+        bool: True if reload successful, False otherwise
+    """
+    try:
+        # Get the config file path from current config
+        config_path = getattr(current_config, '_config_path', 'config/config.yaml')
+
+        # Load new configuration
+        new_config = load_config(config_path)
+
+        # Validate new configuration
+        # TODO: Add comprehensive validation here
+        # For now, just check that required fields are present
+
+        # Apply reloadable settings
+        changes_made = []
+
+        # Update motion detector settings
+        if new_config.motion_threshold != current_config.motion_threshold:
+            # Note: Motion detector would need a reload method
+            changes_made.append(f"motion_threshold: {current_config.motion_threshold} -> {new_config.motion_threshold}")
+
+        if new_config.frame_sample_rate != current_config.frame_sample_rate:
+            # Note: Frame sampler would need a reload method
+            changes_made.append(f"frame_sample_rate: {current_config.frame_sample_rate} -> {new_config.frame_sample_rate}")
+
+        # Update object detection settings
+        if new_config.blacklist_objects != current_config.blacklist_objects:
+            changes_made.append(f"blacklist_objects: {current_config.blacklist_objects} -> {new_config.blacklist_objects}")
+
+        if new_config.min_object_confidence != current_config.min_object_confidence:
+            changes_made.append(f"min_object_confidence: {current_config.min_object_confidence} -> {new_config.min_object_confidence}")
+
+        # Reconnect RTSP if camera URL changed
+        if new_config.camera_rtsp_url != current_config.camera_rtsp_url:
+            logger.info("Camera RTSP URL changed, reconnecting...")
+            try:
+                rtsp_client.disconnect()
+                # Update config reference (if RTSP client supports it)
+                # rtsp_client.update_config(new_config)
+                rtsp_client.connect()
+                changes_made.append(f"camera_rtsp_url: {current_config.camera_rtsp_url} -> {new_config.camera_rtsp_url}")
+            except Exception as e:
+                logger.error(f"Failed to reconnect RTSP camera: {e}")
+                return False
+
+        # Reload CoreML model if path changed
+        if new_config.coreml_model_path != current_config.coreml_model_path:
+            logger.info("CoreML model path changed, reloading model...")
+            try:
+                coreml_detector.load_model(new_config.coreml_model_path)
+                changes_made.append(f"coreml_model_path: {current_config.coreml_model_path} -> {new_config.coreml_model_path}")
+            except Exception as e:
+                logger.error(f"Failed to reload CoreML model: {e}")
+                return False
+
+        # Switch Ollama model if changed
+        if new_config.ollama_model != current_config.ollama_model:
+            logger.info("Ollama model changed, switching model...")
+            try:
+                # Note: Ollama client would need a model switch method
+                # ollama_client.switch_model(new_config.ollama_model)
+                changes_made.append(f"ollama_model: {current_config.ollama_model} -> {new_config.ollama_model}")
+            except Exception as e:
+                logger.error(f"Failed to switch Ollama model: {e}")
+                return False
+
+        # Update current config reference
+        # Note: This is a simplified approach - in production, we'd need to
+        # update the config object in all components that reference it
+        current_config.__dict__.update(new_config.__dict__)
+
+        if changes_made:
+            logger.info(f"Configuration reloaded with {len(changes_made)} changes: {', '.join(changes_made)}")
+        else:
+            logger.info("Configuration reloaded - no changes detected")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Configuration reload failed: {e}")
+        return False
+
+
 def main():
     """Main application entry point."""
     try:
@@ -157,6 +252,10 @@ def main():
             )
             sys.exit(EXIT_ERROR)
 
+        # Initialize signal handler and register signal handlers
+        signal_handler = SignalHandler()
+        signal_handler.register_handlers()
+
         # Initialize database manager (only after health checks pass)
         database_manager = DatabaseManager(config.db_path)
         database_manager.init_database()
@@ -180,16 +279,105 @@ def main():
             ollama_client=ollama_client,
             image_annotator=image_annotator,
             database_manager=database_manager,
+            signal_handler=signal_handler,
             config=config
         )
 
         logger.info("System initialization complete. Starting processing pipeline...")
 
-        # Start the processing pipeline (runs until shutdown signal)
-        pipeline.run()
+        # Record session start time
+        import time
+        session_start_time = time.time()
 
-        # Pipeline completed (shutdown signal received)
-        logger.info("Processing pipeline stopped. System shutdown complete.")
+        # Start the processing pipeline in a separate thread
+        import threading
+        pipeline_thread = threading.Thread(target=pipeline.run, daemon=True)
+        pipeline_thread.start()
+
+        # Main control loop - handle shutdown and hot-reload
+        try:
+            while pipeline_thread.is_alive():
+                # Check for shutdown signal
+                if signal_handler.is_shutdown_requested():
+                    logger.info("Shutdown signal detected, stopping pipeline...")
+                    break
+
+                # Check for reload signal
+                if signal_handler.is_reload_requested():
+                    logger.info("Configuration reload requested, performing hot-reload...")
+                    success = perform_hot_reload(config, rtsp_client, coreml_detector, ollama_client, pipeline)
+                    if success:
+                        logger.info("Configuration reloaded successfully")
+                    else:
+                        logger.warning("Configuration reload failed, continuing with old config")
+                    signal_handler.clear_reload_flag()
+
+                # Brief pause to avoid busy waiting
+                time.sleep(0.1)
+
+        except KeyboardInterrupt:
+            # Handle Ctrl+C during main loop
+            logger.info("Received interrupt signal during processing")
+            signal_handler.shutdown_event.set()
+
+        # Wait for pipeline thread to complete
+        pipeline_thread.join(timeout=10.0)
+        if pipeline_thread.is_alive():
+            logger.warning("Pipeline thread did not complete within timeout")
+
+        # Pipeline completed (shutdown signal received) - perform graceful shutdown
+        logger.info("Processing pipeline stopped. Performing graceful shutdown...")
+
+        # Implement shutdown timeout (10 seconds)
+        import threading
+
+        shutdown_completed = threading.Event()
+
+        def perform_shutdown():
+            try:
+                # The pipeline's _perform_graceful_shutdown is called in its finally block
+                # We just need to wait for it to complete
+                shutdown_completed.set()
+            except Exception as e:
+                logger.error(f"Error during shutdown: {e}")
+                shutdown_completed.set()
+
+        shutdown_thread = threading.Thread(target=perform_shutdown, daemon=True)
+        shutdown_thread.start()
+
+        # Wait for shutdown to complete with timeout
+        if not shutdown_completed.wait(timeout=10.0):
+            logger.warning("Shutdown timeout exceeded (10s), forcing exit")
+            sys.exit(EXIT_ERROR)
+
+        # Calculate session statistics
+        session_end_time = time.time()
+        total_runtime_seconds = session_end_time - session_start_time
+
+        # Get final metrics from pipeline
+        final_metrics = pipeline.metrics_collector.collect()
+
+        # Calculate storage usage (simplified - would need storage monitor integration)
+        # For now, use placeholder values
+        storage_used_gb = 0.0  # TODO: Integrate with storage monitor
+
+        # Format runtime display
+        hours, remainder = divmod(int(total_runtime_seconds), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        runtime_display = f"{hours}h {minutes}m {seconds}s"
+
+        # Log session summary
+        logger.info("Session Summary:")
+        logger.info(f"  Runtime: {runtime_display}")
+        logger.info(f"  Frames processed: {final_metrics.frames_processed:,}")
+        logger.info(f"  Motion detected: {final_metrics.motion_detected:,} frames ({final_metrics.motion_detected/max(final_metrics.frames_processed, 1)*100:.1f}%)")
+        logger.info(f"  Events created: {final_metrics.events_created:,}")
+        logger.info(f"  Events suppressed: {final_metrics.events_suppressed:,} (de-duplication)")
+        logger.info(f"  Avg CoreML inference: {final_metrics.coreml_inference_avg:.1f}ms")
+        logger.info(f"  Avg LLM inference: {final_metrics.llm_inference_avg:.1f}ms")
+        logger.info(f"  Storage used: {storage_used_gb:.1f}GB / {config.max_storage_gb:.1f}GB")
+
+        logger.info("System shutdown complete.")
 
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)

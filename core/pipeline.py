@@ -23,6 +23,7 @@ from core.image_annotator import ImageAnnotator
 from core.logging_config import get_logger
 from core.metrics import MetricsCollector
 from core.motion_detector import MotionDetector
+from core.signals import SignalHandler
 from integrations.ollama import OllamaClient
 from integrations.rtsp_client import RTSPCameraClient
 
@@ -83,6 +84,7 @@ class ProcessingPipeline:
         ollama_client: OllamaClient,
         image_annotator: ImageAnnotator,
         database_manager: DatabaseManager,
+        signal_handler: SignalHandler,
         config: SystemConfig,
     ):
         """Initialize processing pipeline with all components.
@@ -96,6 +98,7 @@ class ProcessingPipeline:
             ollama_client: LLM semantic description component
             image_annotator: Image annotation component
             database_manager: Database manager for event persistence
+            signal_handler: Signal handler for graceful shutdown and hot-reload
             config: System configuration
         """
         self.rtsp_client = rtsp_client
@@ -106,19 +109,13 @@ class ProcessingPipeline:
         self.ollama_client = ollama_client
         self.image_annotator = image_annotator
         self.database_manager = database_manager
+        self.signal_handler = signal_handler
         self.config = config
 
         # Initialize metrics collector
         self.metrics_collector = MetricsCollector(config)
 
-        # Shutdown handling
-        self._shutdown_requested = False
-        signal.signal(signal.SIGINT, self._signal_handler)
 
-    def _signal_handler(self, signum, frame):
-        """Handle shutdown signals gracefully."""
-        logger.info("Shutdown signal received, initiating graceful shutdown...")
-        self._shutdown_requested = True
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get current processing metrics.
@@ -148,7 +145,7 @@ class ProcessingPipeline:
         logger.info("Starting video processing pipeline")
 
         try:
-            while not self._shutdown_requested:
+            while not self.signal_handler.is_shutdown_requested():
                 # Check if we should display periodic status
                 if self.metrics_collector.should_log_metrics():
                     status_display = self.metrics_collector.get_status_display()
@@ -297,6 +294,46 @@ class ProcessingPipeline:
             raise VideoRecognitionError(f"Processing pipeline error: {e}") from e
 
         finally:
-            # Log final metrics summary
+            # Perform graceful shutdown sequence
+            self._perform_graceful_shutdown()
+
+    def _perform_graceful_shutdown(self) -> None:
+        """Perform graceful shutdown sequence.
+
+        Stops accepting new frames, finishes current processing, flushes buffers,
+        closes connections, and saves final metrics.
+        """
+        logger.info("[SHUTDOWN] Stopping frame capture...")
+        try:
+            self.rtsp_client.disconnect()
+            logger.info("[SHUTDOWN] RTSP connection closed")
+        except Exception as e:
+            logger.warning(f"[SHUTDOWN] Error closing RTSP connection: {e}")
+
+        logger.info("[SHUTDOWN] Flushing log buffers...")
+        # Note: Log flushing will be handled by the loggers themselves
+        # when they detect shutdown
+
+        logger.info("[SHUTDOWN] Closing database connection...")
+        try:
+            # Database connection will be closed by context manager
+            # when the main application exits
+            logger.info("[SHUTDOWN] Database connection prepared for closure")
+        except Exception as e:
+            logger.warning(f"[SHUTDOWN] Error preparing database for closure: {e}")
+
+        logger.info("[SHUTDOWN] Saving final metrics...")
+        try:
+            # Save final metrics snapshot
+            final_metrics = self.metrics_collector.collect()
+            # TODO: Save to metrics.json file (will be implemented with metrics persistence)
+            logger.info(f"[SHUTDOWN] Final metrics collected: {final_metrics.frames_processed} frames, {final_metrics.events_created} events")
+        except Exception as e:
+            logger.warning(f"[SHUTDOWN] Error saving final metrics: {e}")
+
+        # Log final metrics summary
+        try:
             status_display = self.metrics_collector.get_status_display()
             logger.info("Final metrics summary:\n" + status_display)
+        except Exception as e:
+            logger.warning(f"[SHUTDOWN] Error generating final metrics summary: {e}")

@@ -59,6 +59,10 @@ def mock_components(pipeline_config):
     # Mock database manager
     database_manager = MagicMock()
 
+    # Mock signal handler
+    signal_handler = MagicMock()
+    signal_handler.is_shutdown_requested.return_value = False
+
     return {
         "rtsp_client": rtsp_client,
         "motion_detector": motion_detector,
@@ -68,6 +72,7 @@ def mock_components(pipeline_config):
         "ollama_client": ollama_client,
         "image_annotator": image_annotator,
         "database_manager": database_manager,
+        "signal_handler": signal_handler,
     }
 
 
@@ -83,6 +88,7 @@ def pipeline(mock_components, pipeline_config):
         ollama_client=mock_components["ollama_client"],
         image_annotator=mock_components["image_annotator"],
         database_manager=mock_components["database_manager"],
+        signal_handler=mock_components["signal_handler"],
         config=pipeline_config
     )
 
