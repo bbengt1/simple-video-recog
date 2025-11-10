@@ -1,87 +1,137 @@
 # AI Coding Assistant Instructions for Simple Video Recognition System
 
 ## Project Overview
-This is a privacy-first, local-only video recognition system for Apple Silicon that processes RTSP camera streams using motion detection, CoreML object detection, and local Ollama LLM semantic understanding. All processing happens on-device with zero cloud dependencies.
+Privacy-first, local-only video recognition system for Apple Silicon processing RTSP streams via motion detection, CoreML object detection, and local Ollama LLM semantic understanding. Zero cloud dependencies, all processing on-device.
 
-## BMAD Method Integration
-This project uses the BMAD (Make AI Do) method for AI-driven planning and development with specialized agents. The BMAD system is configured in `.bmad-core/` with agents for different roles:
-
-- **`.bmad-core/agents/`**: Specialized agents (analyst, architect, dev, pm, po, qa, sm, ux-expert, bmad-master, bmad-orchestrator)
-- **`.bmad-core/core-config.yaml`**: Project configuration for BMAD workflow
-- **Development Workflow**: Follow BMAD planning → sharding → development cycle pattern
-- **Agent Usage**: Use appropriate agents for tasks (@dev for implementation, @qa for testing, @architect for design)
-- **Documentation Structure**: PRD in `docs/prd.md`, architecture in `docs/architecture.md`, sharded stories in `docs/stories/`
-
-## Architecture Patterns
-- **Pipeline Pattern**: Sequential processing through RTSP capture → motion detection → frame sampling → CoreML inference → LLM description → event persistence
-- **Dependency Injection**: Components receive dependencies via constructor (e.g., `ProcessingPipeline(rtsp_client, motion_detector, frame_sampler, config)`)
-- **Pydantic Validation**: All configuration and data models use Pydantic for type safety and validation
-- **Structured Logging**: Use `core.logging_config.get_logger(__name__)` for consistent ISO 8601 timestamps and module names
-- **Repository Pattern**: DatabaseManager abstracts SQLite operations behind clean interface
-- **Observer Pattern**: Custom state management for frontend (Phase 2) with Observer pattern
+## Architecture Essentials
+- **Pipeline Pattern**: RTSP capture → motion detection → frame sampling → CoreML inference → LLM description → event persistence
+- **Dependency Injection**: All components receive dependencies via constructor injection
+- **Pydantic Models**: Type-safe configuration and data models with validation
+- **Structured Logging**: `core.logging_config.get_logger(__name__)` for ISO 8601 timestamps
+- **Repository Pattern**: DatabaseManager abstracts SQLite operations
 
 ## Critical Developer Workflows
 
-### Testing
+### Testing & Validation
 ```bash
+# Comprehensive validation without processing
+python main.py --dry-run --config config/config.yaml
+
 # Run all tests with coverage
 pytest --cov=core --cov=integrations --cov-report=term -v
-
-# Run specific test categories
-pytest tests/unit/test_config.py -v
-pytest tests/integration -v
 
 # Generate HTML coverage report
 pytest --cov=core --cov=integrations --cov-report=html
 open htmlcov/index.html
 ```
 
-### Code Quality
-- Format with `black` (100 char line length) and lint with `ruff`
-- Target 70%+ test coverage across core modules
-- Use type hints and comprehensive docstrings
-- Follow Google-style docstrings
-
-### Testing Patterns
-```bash
-# Run specific test categories
-pytest tests/unit/test_config.py -v                    # Unit tests for config validation
-pytest tests/integration/test_pipeline.py -v          # Integration tests for full pipeline
-pytest tests/unit/test_coreml_detector.py -v          # CoreML inference tests
-
-# Run with coverage for specific modules
-pytest --cov=core.config --cov=core.events -v
-
-# Run performance tests
-pytest tests/performance/ -v --tb=short
-```
-
 ### Development Commands
 ```bash
-# Quick validation without running full pipeline
-python main.py --dry-run --config config/config.yaml
+# Start system with config
+python main.py --config config/config.yaml
 
 # Debug mode with verbose logging
 python main.py --config config/config.yaml --log-level DEBUG
 
-# Override config values from command line
-python main.py --config config/config.yaml --motion-threshold 0.3 --frame-sample-rate 10
+# Override config values
+python main.py --config config/config.yaml --motion-threshold 0.3
 ```
 
-### Local Development Setup
+### Local Setup
 ```bash
-# Install Ollama and pull vision model
+# Install Ollama and vision model
 brew install ollama
 ollama serve
 ollama pull llava:7b
 
-# Install Python dependencies
+# Install dependencies
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
-
-# Configure CoreML model path in config.yaml
-coreml_model_path: "models/yolov8n.mlmodel"
 ```
+
+## Project-Specific Patterns
+
+### Configuration Management
+- Use `SystemConfig` Pydantic model with field validation
+- Load via `load_config(config_path)` with YAML validation
+- Command-line overrides supported in `main.py`
+
+### Error Handling & Exceptions
+- Custom exceptions: `RTSPConnectionError`, `CoreMLLoadError`, `VideoRecognitionError`, `OllamaConnectionError`
+- Graceful degradation: Log errors but continue processing
+- RTSP reconnection with exponential backoff (1s, 2s, 4s, 8s max)
+- Health checks before startup via `HealthChecker`
+
+### Data Models & Event Creation
+```python
+# Pydantic BaseModel for all data structures
+class DetectedObject(BaseModel):
+    label: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    bbox: BoundingBox
+
+# Event IDs with timestamp + random suffix
+event_id = f"evt_{int(time.time() * 1000)}_{secrets.token_hex(2)}"
+
+# JSON serialization
+event_json = event.model_dump_json(indent=2)
+```
+
+### Performance Optimizations
+- Frame sampling reduces load (default: every 5th frame during motion)
+- CoreML targets <100ms inference on Neural Engine with ANE compatibility
+- LLM timeout: 10s with fallback descriptions
+- Event deduplication prevents spam (30s default window)
+- Storage monitoring with configurable GB limits
+
+### File Organization
+- `core/`: Platform-independent business logic
+- `apple_platform/`: Apple Silicon-specific implementations (CoreML)
+- `integrations/`: External service clients (RTSP, Ollama)
+- `tests/unit/`, `tests/integration/`: Comprehensive test suites
+- `migrations/`: SQL schema migrations
+- `config/`: YAML configuration files
+- `data/`: Runtime storage (events, database)
+- `.bmad-core/`: BMAD method agents and workflows
+
+## Integration Points
+
+### RTSP Camera
+- OpenCV VideoCapture with background thread capture
+- URL format: `rtsp://username:password@ip:port/stream`
+- Exponential backoff reconnection (1s, 2s, 4s, 8s max)
+- Frame queue max 100 to prevent memory overflow
+
+### Ollama LLM
+- HTTP client to localhost:11434 with vision models (llava, moondream)
+- 10s timeout with fallback: "Detected: {object_labels}"
+- Prompt: "Describe what is happening in this image. Focus on: {object_labels}"
+
+### CoreML Models
+- .mlmodel files optimized for Apple Neural Engine
+- ANE compatibility validation at startup
+- Target <100ms inference on M1/M2 hardware
+- RGB input (convert from OpenCV BGR)
+
+### SQLite Database
+- Repository pattern via DatabaseManager
+- Atomic transactions with context managers
+- Timestamp-optimized indexing
+- Version-tracked migrations in `migrations/`
+
+## BMAD Development Workflow
+- **Planning**: PRD → Architecture → Story Sharding (`docs/stories/`)
+- **Development**: Story implementation with @dev agent
+- **Quality**: @qa agent reviews with risk assessment and quality gates
+- **Agents**: @dev (implementation), @qa (testing), @architect (design), @pm/@po (planning)
+
+## Code Quality Standards
+- Format with `black` (100 char line length) and lint with `ruff`
+- Target 70%+ test coverage across core modules
+- Type hints and Google-style docstrings required
+- Comprehensive error handling and logging
+
+Focus on privacy-first design, Apple Silicon optimization, and robust error recovery.
 
 ## Project-Specific Conventions
 
