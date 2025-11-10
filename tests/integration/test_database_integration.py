@@ -111,33 +111,33 @@ class TestDatabaseIntegration:
             assert camera_id == "test_camera"
             assert motion_confidence == 0.75
 
-    def test_bulk_event_insertion(self, initialized_db):
-        """Test inserting 100 events for performance and scale."""
+    def test_bulk_event_insertion_1000(self, initialized_db):
+        """Test inserting 1000 events for performance and scale."""
         db = initialized_db
 
         base_time = datetime(2025, 11, 9, 12, 0, 0)
         events_inserted = 0
 
-        # Insert 100 events
-        for i in range(100):
+        # Insert 1000 events
+        for i in range(1000):
             event = create_sample_event(
-                f"evt_bulk_{i:03d}",
+                f"evt_bulk_{i:04d}",
                 base_time.replace(second=i % 60, microsecond=i*1000)
             )
             success = db.insert_event(event)
             assert success
             events_inserted += 1
 
-        assert events_inserted == 100
+        assert events_inserted == 1000
 
         # Verify all events persisted
         cursor = db.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM events WHERE event_id LIKE 'evt_bulk_%'")
         count = cursor.fetchone()[0]
-        assert count == 100
+        assert count == 1000
 
-        # Verify JSON serialization of detected_objects
-        cursor.execute("SELECT detected_objects FROM events WHERE event_id = 'evt_bulk_050' LIMIT 1")
+        # Verify JSON serialization/deserialization round-trip
+        cursor.execute("SELECT detected_objects FROM events WHERE event_id = 'evt_bulk_0500' LIMIT 1")
         detected_json = cursor.fetchone()[0]
 
         import json
@@ -145,6 +145,139 @@ class TestDatabaseIntegration:
         assert len(detected_objects) == 1
         assert detected_objects[0]["label"] == "person"
         assert detected_objects[0]["confidence"] == 0.85
+
+        # Verify data integrity by querying various events
+        cursor.execute("""
+            SELECT event_id, camera_id, motion_confidence, detected_objects
+            FROM events
+            WHERE event_id LIKE 'evt_bulk_%'
+            ORDER BY timestamp
+            LIMIT 5
+        """)
+        sample_rows = cursor.fetchall()
+        assert len(sample_rows) == 5
+
+        for event_id, camera_id, motion_confidence, detected_json in sample_rows:
+            assert event_id.startswith("evt_bulk_")
+            assert camera_id == "test_camera"
+            assert motion_confidence == 0.75
+            detected_objects = json.loads(detected_json)
+            assert len(detected_objects) == 1
+
+    def test_batch_insert_functionality(self, initialized_db):
+        """Test batch insert method with 100 events."""
+        db = initialized_db
+
+        base_time = datetime(2025, 11, 9, 12, 0, 0)
+        events = []
+
+        # Create 100 events
+        for i in range(100):
+            event = create_sample_event(
+                f"evt_batch_{i:03d}",
+                base_time.replace(second=i % 60, microsecond=i*1000)
+            )
+            events.append(event)
+
+        # Batch insert
+        successful, failed = db.insert_events(events)
+
+        assert successful == 100
+        assert failed == 0
+
+        # Verify all events persisted
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM events WHERE event_id LIKE 'evt_batch_%'")
+        count = cursor.fetchone()[0]
+        assert count == 100
+
+    def test_batch_insert_with_duplicates(self, initialized_db):
+        """Test batch insert handling duplicates correctly."""
+        db = initialized_db
+
+        base_time = datetime(2025, 11, 9, 12, 0, 0)
+
+        # Create events, including duplicates
+        events = []
+        for i in range(10):
+            event = create_sample_event(
+                f"evt_dup_{i % 5:03d}",  # Only 5 unique IDs, repeated
+                base_time.replace(second=i)
+            )
+            events.append(event)
+
+        # Batch insert
+        successful, failed = db.insert_events(events)
+
+        assert successful == 5  # Only first 5 unique events
+        assert failed == 5     # 5 duplicates
+
+        # Verify only unique events persisted
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM events WHERE event_id LIKE 'evt_dup_%'")
+        count = cursor.fetchone()[0]
+        assert count == 5
+
+    def test_query_operations_with_1000_events(self, initialized_db):
+        """Test query operations with 1000 events inserted."""
+        db = initialized_db
+
+        base_time = datetime(2025, 11, 9, 12, 0, 0)
+        events_created = []
+
+        # Insert 1000 events with varied timestamps and cameras
+        for i in range(1000):
+            camera_id = f"camera_{(i % 3) + 1}"  # 3 different cameras
+            event_time = base_time.replace(second=i % 60, microsecond=i*1000)
+            event = create_sample_event(
+                f"evt_query_{i:04d}",
+                event_time,
+                camera_id
+            )
+            success = db.insert_event(event)
+            assert success
+            events_created.append(event)
+
+        # Test count_events
+        total_count = db.count_events()
+        assert total_count >= 1000  # May have more from other tests
+
+        # Test get_event_by_id
+        specific_event = events_created[500]
+        retrieved = db.get_event_by_id(specific_event.event_id)
+        assert retrieved is not None
+        assert retrieved.event_id == specific_event.event_id
+        assert retrieved.camera_id == specific_event.camera_id
+        assert len(retrieved.detected_objects) == 1
+
+        # Test get_events_by_timerange
+        start_range = base_time.replace(second=30)
+        end_range = base_time.replace(second=45)
+        timerange_events = db.get_events_by_timerange(start_range, end_range)
+        assert len(timerange_events) > 0
+        # Verify all returned events are within range
+        for event in timerange_events:
+            assert start_range <= event.timestamp < end_range
+
+        # Test get_recent_events
+        recent_events = db.get_recent_events(limit=50)
+        assert len(recent_events) <= 50
+        # Verify ordering (most recent first)
+        for i in range(len(recent_events) - 1):
+            assert recent_events[i].timestamp >= recent_events[i + 1].timestamp
+
+        # Test get_events_by_camera
+        camera_events = db.get_events_by_camera("camera_1", limit=100)
+        assert len(camera_events) > 0
+        # Verify all events are from the correct camera
+        for event in camera_events:
+            assert event.camera_id == "camera_1"
+
+        # Test pagination
+        paginated_events = db.get_events_by_timerange(
+            datetime.min, datetime.max, offset=100, limit=50
+        )
+        assert len(paginated_events) <= 50
 
     def test_duplicate_event_handling(self, initialized_db):
         """Test that duplicate event_ids are rejected."""

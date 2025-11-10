@@ -239,6 +239,7 @@ class ProcessingPipeline:
                                 detected_objects=detections.objects,
                                 llm_description=description,
                                 image_path=f"data/events/{now.date()}/{event_id}.jpg",
+                                json_log_path=f"data/events/{now.date()}/events.json",
                                 metadata={
                                     "coreml_inference_time": detections.inference_time,
                                     "llm_inference_time": llm_time if 'llm_time' in locals() else 0.0,

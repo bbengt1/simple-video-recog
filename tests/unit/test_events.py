@@ -32,6 +32,7 @@ def sample_event(sample_detected_object):
         detected_objects=[sample_detected_object],
         llm_description="Person in blue shirt carrying brown package approaching front door",
         image_path="data/events/2025-11-08/evt_1699459335_a7b3c.jpg",
+        json_log_path="data/events/2025-11-08/events.json",
         metadata={
             "coreml_inference_time": 0.05,
             "llm_inference_time": 2.34,
@@ -61,7 +62,8 @@ class TestEventModel:
             timestamp=datetime(2025, 11, 8, 12, 0, 0, tzinfo=timezone.utc),
             camera_id="camera_1",
             llm_description="Test description",
-            image_path="test.jpg"
+            image_path="test.jpg",
+            json_log_path="test.json"
         )
 
         assert event.event_id == "evt_test"
@@ -83,7 +85,8 @@ class TestEventModel:
             camera_id="camera_1",
             motion_confidence=0.5,
             llm_description="Test",
-            image_path="test.jpg"
+            image_path="test.jpg",
+            json_log_path="test.json"
         )
 
         # Invalid confidence - too low
@@ -94,7 +97,8 @@ class TestEventModel:
                 camera_id="camera_1",
                 motion_confidence=-0.1,
                 llm_description="Test",
-                image_path="test.jpg"
+                image_path="test.jpg",
+                json_log_path="test.json"
             )
 
         # Invalid confidence - too high
@@ -105,7 +109,8 @@ class TestEventModel:
                 camera_id="camera_1",
                 motion_confidence=1.5,
                 llm_description="Test",
-                image_path="test.jpg"
+                image_path="test.jpg",
+                json_log_path="test.json"
             )
 
 
@@ -239,7 +244,8 @@ class TestEventMetadata:
             timestamp=datetime(2025, 11, 8, 12, 0, 0, tzinfo=timezone.utc),
             camera_id="camera_1",
             llm_description="Test",
-            image_path="test.jpg"
+            image_path="test.jpg",
+            json_log_path="test.json"
         )
 
         assert event.metadata == {}
@@ -264,6 +270,7 @@ class TestEventMetadata:
             camera_id="camera_1",
             llm_description="Test",
             image_path="test.jpg",
+            json_log_path="test.json",
             metadata=complex_metadata
         )
 

@@ -3,9 +3,13 @@
 import pytest
 import numpy as np
 
+from apple_platform.coreml_detector import CoreMLDetector
 from core.config import SystemConfig
+from core.events import EventDeduplicator
+from core.image_annotator import ImageAnnotator
 from core.motion_detector import MotionDetector
 from core.pipeline import FrameSampler, ProcessingPipeline
+from integrations.ollama import OllamaClient
 from integrations.rtsp_client import RTSPCameraClient
 
 
@@ -21,8 +25,17 @@ def test_processing_pipeline_component_integration(sample_config):
     # Create RTSP client (will use mock in actual testing)
     rtsp_client = RTSPCameraClient(config)
 
+    # Create additional required components
+    coreml_detector = CoreMLDetector(config)
+    event_deduplicator = EventDeduplicator(config)
+    ollama_client = OllamaClient(config)
+    image_annotator = ImageAnnotator()
+
     # Create pipeline
-    pipeline = ProcessingPipeline(rtsp_client, motion_detector, frame_sampler, config)
+    pipeline = ProcessingPipeline(
+        rtsp_client, motion_detector, frame_sampler, coreml_detector,
+        event_deduplicator, ollama_client, image_annotator, config
+    )
 
     # Test with static frame (no motion expected after learning phase)
     static_frame = np.full((240, 320, 3), (100, 100, 100), dtype=np.uint8)
@@ -57,7 +70,10 @@ def test_processing_pipeline_component_integration(sample_config):
 
     # Test metrics tracking
     initial_metrics = pipeline.get_metrics()
-    expected_keys = {"total_frames_captured", "frames_with_motion", "frames_sampled", "frames_processed"}
+    expected_keys = {
+        "total_frames_captured", "frames_with_motion", "frames_sampled", "frames_processed",
+        "objects_detected", "events_created", "events_suppressed", "coreml_time_avg", "llm_time_avg"
+    }
     assert set(initial_metrics.keys()) == expected_keys
     assert all(v == 0 for v in initial_metrics.values())
 
@@ -76,7 +92,16 @@ def test_processing_pipeline_metrics_workflow(sample_config):
     frame_sampler = FrameSampler(config)
     rtsp_client = RTSPCameraClient(config)
 
-    pipeline = ProcessingPipeline(rtsp_client, motion_detector, frame_sampler, config)
+    # Create additional required components
+    coreml_detector = CoreMLDetector(config)
+    event_deduplicator = EventDeduplicator(config)
+    ollama_client = OllamaClient(config)
+    image_annotator = ImageAnnotator()
+
+    pipeline = ProcessingPipeline(
+        rtsp_client, motion_detector, frame_sampler, coreml_detector,
+        event_deduplicator, ollama_client, image_annotator, config
+    )
 
     # Simulate processing workflow manually
     # (In real scenario, this would happen in the run() loop)

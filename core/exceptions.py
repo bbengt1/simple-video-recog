@@ -112,3 +112,20 @@ class DatabaseError(VideoRecognitionError):
     """
 
     pass
+
+
+class DatabaseWriteError(DatabaseError):
+    """Database write operation failed.
+
+    Raised when database write operations fail due to disk space,
+    permissions, or other write-specific issues. This is a subclass
+    of DatabaseError for more specific error handling.
+
+    Examples:
+        - Disk full preventing event insertion
+        - Insufficient permissions to write to database file
+        - Database file locked for writing
+        - File system errors during commit
+    """
+
+    pass

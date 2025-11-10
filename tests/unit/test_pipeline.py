@@ -6,7 +6,11 @@ from unittest.mock import Mock
 from core.config import SystemConfig
 from core.motion_detector import MotionDetector
 from core.pipeline import FrameSampler, ProcessingPipeline
+from core.events import EventDeduplicator
+from core.image_annotator import ImageAnnotator
+from apple_platform.coreml_detector import CoreMLDetector
 from integrations.rtsp_client import RTSPCameraClient
+from integrations.ollama import OllamaClient
 
 
 class TestFrameSampler:
@@ -83,9 +87,16 @@ class TestProcessingPipeline:
         mock_rtsp = Mock(spec=RTSPCameraClient)
         mock_motion = Mock(spec=MotionDetector)
         mock_sampler = Mock(spec=FrameSampler)
+        mock_coreml = Mock(spec=CoreMLDetector)
+        mock_deduplicator = Mock(spec=EventDeduplicator)
+        mock_ollama = Mock(spec=OllamaClient)
+        mock_image_annotator = Mock(spec=ImageAnnotator)
 
         # Act
-        pipeline = ProcessingPipeline(mock_rtsp, mock_motion, mock_sampler, config)
+        pipeline = ProcessingPipeline(
+            mock_rtsp, mock_motion, mock_sampler, mock_coreml,
+            mock_deduplicator, mock_ollama, mock_image_annotator, config
+        )
 
         # Assert
         expected_metrics = {
@@ -93,6 +104,11 @@ class TestProcessingPipeline:
             "frames_with_motion": 0,
             "frames_sampled": 0,
             "frames_processed": 0,
+            "objects_detected": 0,
+            "events_created": 0,
+            "events_suppressed": 0,
+            "coreml_time_avg": 0.0,
+            "llm_time_avg": 0.0,
         }
         assert pipeline.get_metrics() == expected_metrics
 
@@ -103,8 +119,15 @@ class TestProcessingPipeline:
         mock_rtsp = Mock(spec=RTSPCameraClient)
         mock_motion = Mock(spec=MotionDetector)
         mock_sampler = Mock(spec=FrameSampler)
+        mock_coreml = Mock(spec=CoreMLDetector)
+        mock_deduplicator = Mock(spec=EventDeduplicator)
+        mock_ollama = Mock(spec=OllamaClient)
+        mock_image_annotator = Mock(spec=ImageAnnotator)
 
-        pipeline = ProcessingPipeline(mock_rtsp, mock_motion, mock_sampler, config)
+        pipeline = ProcessingPipeline(
+            mock_rtsp, mock_motion, mock_sampler, mock_coreml,
+            mock_deduplicator, mock_ollama, mock_image_annotator, config
+        )
         metrics = pipeline.get_metrics()
 
         # Act: Modify returned metrics
@@ -120,6 +143,10 @@ class TestProcessingPipeline:
         mock_rtsp = Mock(spec=RTSPCameraClient)
         mock_motion = Mock(spec=MotionDetector)
         mock_sampler = Mock(spec=FrameSampler)
+        mock_coreml = Mock(spec=CoreMLDetector)
+        mock_deduplicator = Mock(spec=EventDeduplicator)
+        mock_ollama = Mock(spec=OllamaClient)
+        mock_image_annotator = Mock(spec=ImageAnnotator)
 
         # Setup mocks
         import numpy as np
@@ -128,7 +155,10 @@ class TestProcessingPipeline:
         mock_motion.detect_motion.return_value = (True, 0.8, np.zeros((480, 640), dtype=np.uint8))
         mock_sampler.should_process.return_value = True
 
-        pipeline = ProcessingPipeline(mock_rtsp, mock_motion, mock_sampler, config)
+        pipeline = ProcessingPipeline(
+            mock_rtsp, mock_motion, mock_sampler, mock_coreml,
+            mock_deduplicator, mock_ollama, mock_image_annotator, config
+        )
 
         # Act: Simulate processing a few frames
         # Note: In real implementation, we'd need to modify run() to be more testable

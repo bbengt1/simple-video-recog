@@ -6,7 +6,7 @@ the system, including detected objects, bounding boxes, and detection results.
 
 from typing import List, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BoundingBox(BaseModel):
@@ -37,15 +37,7 @@ class BoundingBox(BaseModel):
         gt=0
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "x": 120,
-                "y": 50,
-                "width": 180,
-                "height": 320
-            }
-        }
+    model_config = ConfigDict()
 
 
 class DetectedObject(BaseModel):
@@ -72,19 +64,7 @@ class DetectedObject(BaseModel):
         description="Bounding box coordinates"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "label": "person",
-                "confidence": 0.92,
-                "bbox": {
-                    "x": 120,
-                    "y": 50,
-                    "width": 180,
-                    "height": 320
-                }
-            }
-        }
+    model_config = ConfigDict()
 
 
 class DetectionResult(BaseModel):
@@ -110,22 +90,4 @@ class DetectionResult(BaseModel):
         examples=[(480, 640, 3)]
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "objects": [
-                    {
-                        "label": "person",
-                        "confidence": 0.92,
-                        "bbox": {"x": 120, "y": 50, "width": 180, "height": 320}
-                    },
-                    {
-                        "label": "car",
-                        "confidence": 0.87,
-                        "bbox": {"x": 300, "y": 100, "width": 200, "height": 150}
-                    }
-                ],
-                "inference_time": 0.05,
-                "frame_shape": (480, 640, 3)
-            }
-        }
+    model_config = ConfigDict()

@@ -47,7 +47,7 @@ def test_main_with_valid_config():
 
     try:
         # Start the process
-        cmd = [sys.executable, "main.py", config_file]
+        cmd = [sys.executable, "main.py", "--config", config_file]
         process = subprocess.Popen(
             cmd,
             cwd=Path(__file__).parent.parent.parent,
@@ -74,7 +74,7 @@ def test_main_with_valid_config():
 
 
 def test_main_with_missing_config():
-    """Test main.py exits with error when no config file provided."""
+    """Test main.py exits with error when default config file doesn't exist."""
     cmd = [sys.executable, "main.py"]
     process = subprocess.Popen(
         cmd,
@@ -86,14 +86,14 @@ def test_main_with_missing_config():
 
     stdout, stderr = process.communicate(timeout=5)
 
-    # Should exit with code 2 (argparse error)
+    # Should exit with code 2 (config invalid)
     assert process.returncode == 2
-    assert "the following arguments are required: config_file" in stderr
+    assert "Configuration file not found" in stderr
 
 
 def test_main_with_invalid_config_path():
     """Test main.py exits with error when config file doesn't exist."""
-    cmd = [sys.executable, "main.py", "/nonexistent/config.yaml"]
+    cmd = [sys.executable, "main.py", "--config", "/nonexistent/config.yaml"]
     process = subprocess.Popen(
         cmd,
         cwd=Path(__file__).parent.parent.parent,
@@ -104,10 +104,10 @@ def test_main_with_invalid_config_path():
 
     stdout, stderr = process.communicate(timeout=5)
 
-    # Should exit with code 1 (fatal error)
-    assert process.returncode == 1
+    # Should exit with code 2 (config invalid)
+    assert process.returncode == 2
     combined_output = stdout + stderr
-    assert "Fatal error during startup" in combined_output
+    assert "Configuration file not found" in combined_output
 
 
 def test_main_help_display():
@@ -125,5 +125,5 @@ def test_main_help_display():
 
     assert process.returncode == 0
     assert "Local Video Recognition System" in stdout
-    assert "config_file" in stdout
+    assert "--config" in stdout
     assert "Examples:" in stdout

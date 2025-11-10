@@ -11,7 +11,7 @@ import pytest
 
 from core.database import DatabaseManager
 from core.events import Event
-from core.exceptions import DatabaseError
+from core.exceptions import DatabaseError, DatabaseWriteError
 from core.models import DetectedObject, BoundingBox
 
 
@@ -167,7 +167,7 @@ class TestDatabaseManager:
 
     @patch('core.database.sqlite3.connect')
     def test_insert_event_database_error(self, mock_connect, temp_db_path, sample_event):
-        """Test event insertion with database error."""
+        """Test event insertion with database write error."""
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
@@ -177,7 +177,7 @@ class TestDatabaseManager:
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
 
-        with pytest.raises(DatabaseError, match="Failed to insert event"):
+        with pytest.raises(DatabaseWriteError, match="Failed to write event to database"):
             db.insert_event(sample_event)
 
         mock_conn.rollback.assert_called_once()
@@ -190,6 +190,231 @@ class TestDatabaseManager:
 
         with pytest.raises(DatabaseError, match="Database not initialized"):
             db.insert_event(sample_event)
+
+    @patch('core.database.sqlite3.connect')
+    def test_insert_events_success(self, mock_connect, temp_db_path, sample_event):
+        """Test successful batch event insertion."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        db = DatabaseManager(temp_db_path)
+        db.conn = mock_conn
+
+        events = [sample_event]
+        successful, failed = db.insert_events(events)
+
+        assert successful == 1
+        assert failed == 0
+        assert mock_cursor.execute.call_count == 1
+        mock_conn.commit.assert_called_once()
+
+    @patch('core.database.sqlite3.connect')
+    def test_insert_events_mixed_results(self, mock_connect, temp_db_path, sample_event):
+        """Test batch insertion with some duplicates."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        # First event succeeds, second fails with duplicate
+        mock_cursor.execute.side_effect = [None, sqlite3.IntegrityError("UNIQUE constraint failed")]
+
+        db = DatabaseManager(temp_db_path)
+        db.conn = mock_conn
+
+        events = [sample_event, sample_event]  # Same event twice
+        successful, failed = db.insert_events(events)
+
+        assert successful == 1
+        assert failed == 1
+        mock_conn.commit.assert_called_once()
+
+    @patch('core.database.sqlite3.connect')
+    def test_insert_events_empty_list(self, mock_connect, temp_db_path):
+        """Test batch insertion with empty event list."""
+        db = DatabaseManager(temp_db_path)
+        # No need to mock connection for empty list
+
+        successful, failed = db.insert_events([])
+        assert successful == 0
+        assert failed == 0
+
+    @patch('core.database.sqlite3.connect')
+    def test_insert_events_batch_write_error(self, mock_connect, temp_db_path, sample_event):
+        """Test batch insertion with database commit error."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_conn.commit.side_effect = sqlite3.Error("Disk full")
+        mock_connect.return_value = mock_conn
+
+        db = DatabaseManager(temp_db_path)
+        db.conn = mock_conn
+
+        events = [sample_event]
+        with pytest.raises(DatabaseWriteError, match="Failed to write events batch to database"):
+            db.insert_events(events)
+
+        mock_conn.rollback.assert_called_once()
+
+    @patch('core.database.sqlite3.connect')
+    def test_get_event_by_id_success(self, mock_connect, temp_db_path, sample_event):
+        """Test successful event retrieval by ID."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        # Mock query result
+        detected_objects_json = json.dumps([obj.model_dump() for obj in sample_event.detected_objects])
+        mock_cursor.fetchone.return_value = (
+            sample_event.event_id,
+            sample_event.timestamp.isoformat(),
+            sample_event.camera_id,
+            sample_event.motion_confidence,
+            detected_objects_json,
+            sample_event.llm_description,
+            sample_event.image_path,
+            sample_event.json_log_path,
+        )
+
+        db = DatabaseManager(temp_db_path)
+        db.conn = mock_conn
+
+        result = db.get_event_by_id(sample_event.event_id)
+
+        assert result is not None
+        assert result.event_id == sample_event.event_id
+        assert result.camera_id == sample_event.camera_id
+        assert len(result.detected_objects) == 1
+        assert result.detected_objects[0].label == "person"
+
+        mock_cursor.execute.assert_called_once()
+
+    @patch('core.database.sqlite3.connect')
+    def test_get_event_by_id_not_found(self, mock_connect, temp_db_path):
+        """Test event retrieval by ID when not found."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = None
+        mock_connect.return_value = mock_conn
+
+        db = DatabaseManager(temp_db_path)
+        db.conn = mock_conn
+
+        result = db.get_event_by_id("nonexistent_id")
+
+        assert result is None
+
+    @patch('core.database.sqlite3.connect')
+    def test_get_events_by_timerange_success(self, mock_connect, temp_db_path, sample_event):
+        """Test successful timerange query."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        # Mock query result
+        detected_objects_json = json.dumps([obj.model_dump() for obj in sample_event.detected_objects])
+        mock_cursor.fetchall.return_value = [(
+            sample_event.event_id,
+            sample_event.timestamp.isoformat(),
+            sample_event.camera_id,
+            sample_event.motion_confidence,
+            detected_objects_json,
+            sample_event.llm_description,
+            sample_event.image_path,
+            sample_event.json_log_path,
+        )]
+
+        db = DatabaseManager(temp_db_path)
+        db.conn = mock_conn
+
+        start = datetime(2025, 11, 9, 0, 0, 0)
+        end = datetime(2025, 11, 10, 0, 0, 0)
+
+        results = db.get_events_by_timerange(start, end)
+
+        assert len(results) == 1
+        assert results[0].event_id == sample_event.event_id
+
+    @patch('core.database.sqlite3.connect')
+    def test_get_recent_events_success(self, mock_connect, temp_db_path, sample_event):
+        """Test successful recent events query."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        # Mock query result
+        detected_objects_json = json.dumps([obj.model_dump() for obj in sample_event.detected_objects])
+        mock_cursor.fetchall.return_value = [(
+            sample_event.event_id,
+            sample_event.timestamp.isoformat(),
+            sample_event.camera_id,
+            sample_event.motion_confidence,
+            detected_objects_json,
+            sample_event.llm_description,
+            sample_event.image_path,
+            sample_event.json_log_path,
+        )]
+
+        db = DatabaseManager(temp_db_path)
+        db.conn = mock_conn
+
+        results = db.get_recent_events(limit=10)
+
+        assert len(results) == 1
+        assert results[0].event_id == sample_event.event_id
+
+    @patch('core.database.sqlite3.connect')
+    def test_count_events_success(self, mock_connect, temp_db_path):
+        """Test successful event count."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchone.return_value = (42,)
+        mock_connect.return_value = mock_conn
+
+        db = DatabaseManager(temp_db_path)
+        db.conn = mock_conn
+
+        count = db.count_events()
+
+        assert count == 42
+        mock_cursor.execute.assert_called_with("SELECT COUNT(*) FROM events")
+
+    @patch('core.database.sqlite3.connect')
+    def test_get_events_by_camera_success(self, mock_connect, temp_db_path, sample_event):
+        """Test successful camera-specific query."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        # Mock query result
+        detected_objects_json = json.dumps([obj.model_dump() for obj in sample_event.detected_objects])
+        mock_cursor.fetchall.return_value = [(
+            sample_event.event_id,
+            sample_event.timestamp.isoformat(),
+            sample_event.camera_id,
+            sample_event.motion_confidence,
+            detected_objects_json,
+            sample_event.llm_description,
+            sample_event.image_path,
+            sample_event.json_log_path,
+        )]
+
+        db = DatabaseManager(temp_db_path)
+        db.conn = mock_conn
+
+        results = db.get_events_by_camera("camera_1", limit=50)
+
+        assert len(results) == 1
+        assert results[0].camera_id == "camera_1"
 
     def test_close(self, temp_db_path):
         """Test database connection closing."""

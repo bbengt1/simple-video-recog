@@ -64,6 +64,7 @@ class TestEventJsonIntegration:
             detected_objects=real_detection_result["objects"],
             llm_description=real_ollama_description,
             image_path="data/events/2025-11-09/evt_test.jpg",
+            json_log_path="data/events/2025-11-09/events.json",
             metadata={
                 "coreml_inference_time": real_detection_result["inference_time"],
                 "llm_inference_time": 2.1,
@@ -90,6 +91,7 @@ class TestEventJsonIntegration:
             detected_objects=real_detection_result["objects"],
             llm_description=real_ollama_description,
             image_path="data/events/2025-11-09/evt_1699540200000_test.jpg",
+            json_log_path="data/events/2025-11-09/events.json",
             metadata={
                 "coreml_inference_time": 0.05,
                 "llm_inference_time": 2.1,
@@ -138,6 +140,7 @@ class TestEventJsonIntegration:
             detected_objects=real_detection_result["objects"],
             llm_description=real_ollama_description,
             image_path="data/events/2025-11-09/test_event.jpg",
+            json_log_path="data/events/2025-11-09/events.json",
             metadata={
                 "coreml_inference_time": 0.04,
                 "llm_inference_time": 1.8,
@@ -190,6 +193,7 @@ class TestEventJsonIntegration:
             motion_confidence=0.8,
             llm_description="Complex scene description",
             image_path="data/events/2025-11-09/complex.jpg",
+            json_log_path="data/events/2025-11-09/events.json",
             metadata={
                 "performance": {
                     "coreml_fps": 18.5,
@@ -238,7 +242,8 @@ class TestEventJsonIntegration:
                 camera_id="camera_1",
                 motion_confidence=1.5,  # Invalid: should be <= 1.0
                 llm_description="Test",
-                image_path="test.jpg"
+                image_path="test.jpg",
+                json_log_path="data/events/2025-11-09/events.json"
             )
 
         # Test from_json with corrupted JSON
@@ -257,6 +262,7 @@ class TestEventJsonIntegration:
             motion_confidence=0.9,
             llm_description=unicode_description,
             image_path="data/events/2025-11-09/unicode.jpg",
+            json_log_path="data/events/2025-11-09/events.json",
             metadata={"test": "unicode_support_✓"}
         )
 
