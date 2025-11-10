@@ -24,6 +24,7 @@ from core.logging_config import get_logger
 from core.metrics import MetricsCollector
 from core.motion_detector import MotionDetector
 from core.signals import SignalHandler
+from core.storage_monitor import StorageMonitor
 from integrations.ollama import OllamaClient
 from integrations.rtsp_client import RTSPCameraClient
 
@@ -85,6 +86,7 @@ class ProcessingPipeline:
         image_annotator: ImageAnnotator,
         database_manager: DatabaseManager,
         signal_handler: SignalHandler,
+        storage_monitor: StorageMonitor,
         config: SystemConfig,
     ):
         """Initialize processing pipeline with all components.
@@ -99,6 +101,7 @@ class ProcessingPipeline:
             image_annotator: Image annotation component
             database_manager: Database manager for event persistence
             signal_handler: Signal handler for graceful shutdown and hot-reload
+            storage_monitor: Storage monitoring component
             config: System configuration
         """
         self.rtsp_client = rtsp_client
@@ -110,6 +113,7 @@ class ProcessingPipeline:
         self.image_annotator = image_annotator
         self.database_manager = database_manager
         self.signal_handler = signal_handler
+        self.storage_monitor = storage_monitor
         self.config = config
 
         # Initialize metrics collector
@@ -284,6 +288,15 @@ class ProcessingPipeline:
 
                             self.metrics_collector.increment_counter("events_created")
                             logger.info(f"Event created: {event_id}, objects={len(detections.objects)}")
+
+                            # Check storage limits after event creation
+                            if self.storage_monitor.check_storage_and_enforce_limits():
+                                logger.critical(
+                                    "Storage limit exceeded during event processing. "
+                                    "Initiating graceful shutdown to prevent data loss."
+                                )
+                                self.signal_handler.shutdown_event.set()
+                                break
 
                         except Exception as e:
                             logger.error(f"Event creation failed: {e}")

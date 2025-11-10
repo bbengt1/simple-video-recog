@@ -470,37 +470,26 @@ class HealthChecker:
     def _check_storage_availability(self) -> tuple[bool, str]:
         """Check storage availability and usage limits."""
         try:
-            import shutil
-            import os
+            from core.storage_monitor import StorageMonitor
 
-            # Get disk usage for the current directory
-            usage = shutil.disk_usage(".")
+            # Initialize storage monitor to check data directory usage
+            storage_monitor = StorageMonitor(self.config)
+            stats = storage_monitor.check_usage()
 
-            # Convert bytes to GB (handle both named tuple and regular tuple for mocking)
-            if hasattr(usage, 'total'):
-                total_gb = usage.total / (1024 ** 3)
-                used_gb = usage.used / (1024 ** 3)
-                free_gb = usage.free / (1024 ** 3)
-            else:
-                # Handle mock tuple (total, used, free)
-                total_gb = usage[0] / (1024 ** 3)
-                used_gb = usage[1] / (1024 ** 3)
-                free_gb = usage[2] / (1024 ** 3)
-
-            # Check against configured limit
+            # Convert bytes to GB
+            used_gb = stats.total_bytes / (1024 ** 3)
             max_storage_gb = self.config.max_storage_gb
-            usage_percent = (used_gb / total_gb) * 100
 
-            # Warning threshold is 80% of max_storage_gb
+            # Check if already over limit at startup
+            if stats.is_over_limit:
+                return False, f"Storage limit exceeded: {used_gb:.1f}GB used, limit is {max_storage_gb:.1f}GB. Please clean up data before starting."
+
+            # Check warning threshold (80% of limit)
             warning_threshold_gb = max_storage_gb * 0.8
-
-            if used_gb >= max_storage_gb:
-                return False, f"Storage limit exceeded: {used_gb:.1f}GB used, limit is {max_storage_gb:.1f}GB"
-
             if used_gb >= warning_threshold_gb:
-                return True, f"⚠ Storage usage high: {used_gb:.1f}GB / {max_storage_gb:.1f}GB ({usage_percent:.1f}% of disk)"
+                return True, f"⚠ Storage usage high: {used_gb:.1f}GB / {max_storage_gb:.1f}GB ({stats.percentage_used*100:.1f}%)"
 
-            return True, f"✓ Storage: {used_gb:.1f}GB / {max_storage_gb:.1f}GB limit ({usage_percent:.1f}% of disk)"
+            return True, f"✓ Storage: {used_gb:.1f}GB / {max_storage_gb:.1f}GB limit ({stats.percentage_used*100:.1f}%)"
 
         except Exception as e:
             return False, f"Storage availability check failed: {str(e)}"

@@ -24,6 +24,7 @@ from core.database import DatabaseManager
 from core.version import format_version_output, get_version_info
 from core.dry_run import DryRunValidator
 from core.signals import SignalHandler
+from core.storage_monitor import StorageMonitor
 from apple_platform.coreml_detector import CoreMLDetector
 from integrations.rtsp_client import RTSPCameraClient
 from integrations.ollama import OllamaClient
@@ -256,6 +257,9 @@ def main():
         signal_handler = SignalHandler()
         signal_handler.register_handlers()
 
+        # Initialize storage monitor
+        storage_monitor = StorageMonitor(config)
+
         # Initialize database manager (only after health checks pass)
         database_manager = DatabaseManager(config.db_path)
         database_manager.init_database()
@@ -280,6 +284,7 @@ def main():
             image_annotator=image_annotator,
             database_manager=database_manager,
             signal_handler=signal_handler,
+            storage_monitor=storage_monitor,
             config=config
         )
 
@@ -288,6 +293,9 @@ def main():
         # Record session start time
         import time
         session_start_time = time.time()
+
+        # Track shutdown reason for appropriate exit code
+        shutdown_reason = "normal"
 
         # Start the processing pipeline in a separate thread
         import threading
@@ -299,7 +307,13 @@ def main():
             while pipeline_thread.is_alive():
                 # Check for shutdown signal
                 if signal_handler.is_shutdown_requested():
-                    logger.info("Shutdown signal detected, stopping pipeline...")
+                    # Check if shutdown was triggered by storage limits
+                    storage_stats = storage_monitor.check_usage()
+                    if storage_stats.is_over_limit:
+                        shutdown_reason = "storage_full"
+                        logger.info("Storage limit exceeded shutdown detected")
+                    else:
+                        logger.info("Shutdown signal detected, stopping pipeline...")
                     break
 
                 # Check for reload signal
@@ -357,9 +371,9 @@ def main():
         # Get final metrics from pipeline
         final_metrics = pipeline.metrics_collector.collect()
 
-        # Calculate storage usage (simplified - would need storage monitor integration)
-        # For now, use placeholder values
-        storage_used_gb = 0.0  # TODO: Integrate with storage monitor
+        # Calculate storage usage using storage monitor
+        storage_stats = storage_monitor.check_usage()
+        storage_used_gb = storage_stats.total_bytes / (1024**3)
 
         # Format runtime display
         hours, remainder = divmod(int(total_runtime_seconds), 3600)
@@ -378,6 +392,14 @@ def main():
         logger.info(f"  Storage used: {storage_used_gb:.1f}GB / {config.max_storage_gb:.1f}GB")
 
         logger.info("System shutdown complete.")
+
+        # Exit with appropriate code based on shutdown reason
+        if shutdown_reason == "storage_full":
+            logger.info("Exiting with storage full error code")
+            sys.exit(EXIT_STORAGE_FULL)
+        else:
+            logger.info("Exiting with success code")
+            sys.exit(EXIT_SUCCESS)
 
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
