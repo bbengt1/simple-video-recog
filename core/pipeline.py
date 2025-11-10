@@ -148,6 +148,10 @@ class ProcessingPipeline:
         """
         logger.info("Starting video processing pipeline")
 
+        # Start RTSP frame capture in background thread
+        self.rtsp_client.start_capture()
+        logger.info("RTSP frame capture started")
+
         try:
             while not self.signal_handler.is_shutdown_requested():
                 # Check if we should display periodic status
@@ -155,8 +159,8 @@ class ProcessingPipeline:
                     status_display = self.metrics_collector.get_status_display()
                     logger.info("Periodic status update:\n" + status_display)
 
-                # Get frame from RTSP client
-                frame = self.rtsp_client.get_frame()
+                # Get latest frame from RTSP client queue
+                frame = self.rtsp_client.get_latest_frame()
                 if frame is None:
                     continue  # Skip if no frame available
 
@@ -318,6 +322,7 @@ class ProcessingPipeline:
         """
         logger.info("[SHUTDOWN] Stopping frame capture...")
         try:
+            self.rtsp_client.stop_capture()
             self.rtsp_client.disconnect()
             logger.info("[SHUTDOWN] RTSP connection closed")
         except Exception as e:

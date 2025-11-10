@@ -22,7 +22,7 @@ With the MVP complete, users can now capture and analyze video events, but they 
 
 ## Success Criteria
 
-- Users can access a web dashboard at `http://localhost:8080` (configurable port)
+- Users can access a web dashboard at `http://localhost:8000` (configurable port)
 - Dashboard shows live event feed with thumbnails and descriptions
 - System health metrics are displayed in real-time
 - Event details include annotated images and full metadata
@@ -91,7 +91,7 @@ Users SHALL be able to search and filter historical events.
 #### NFR31: Performance
 - Dashboard SHALL load in <3 seconds
 - API responses SHALL be <500ms for event queries
-- WebSocket/SSE updates SHALL have <1 second latency
+- WebSocket updates SHALL have <1 second latency
 - Memory usage SHALL remain <200MB for dashboard operation
 
 #### NFR32: Security
@@ -110,23 +110,24 @@ Users SHALL be able to search and filter historical events.
 
 **Web Framework:** FastAPI for async web server with automatic OpenAPI docs
 **Frontend:** Vanilla JavaScript (HTML/CSS/JS) - no frameworks to minimize dependencies
-**Real-Time Updates:** Server-Sent Events (SSE) for live event streaming
-**Data Access:** REST API endpoints for event queries and system metrics
+**Real-Time Updates:** WebSocket for live event streaming (ws://localhost:8000/ws/events)
+**Data Access:** REST API endpoints for event queries and system metrics (read-only SQLite connection)
 **Styling:** CSS Grid/Flexbox with custom design system
 
 ### Implementation Strategy
 
 1. **API Server** (`api/` directory)
    - FastAPI application with CORS middleware
-   - Event streaming endpoint with SSE
+   - WebSocket endpoint for real-time event streaming
    - REST endpoints for event queries and metrics
    - Static file serving for dashboard assets
+   - Read-only SQLite connection to prevent write contention
 
 2. **Web Dashboard** (`web/` directory)
    - Single-page application structure
    - Modular JavaScript for event feed, details, search
    - CSS for responsive dashboard layout
-   - WebSocket/SSE client for real-time updates
+   - WebSocket client for real-time updates with reconnection logic
 
 3. **Integration Points**
    - Event persistence system provides data access
@@ -215,9 +216,32 @@ Users SHALL be able to search and filter historical events.
 
 - [ ] All stories implemented and tested
 - [ ] Dashboard loads in <3 seconds on target hardware
-- [ ] Real-time event updates work reliably
+- [ ] Real-time event updates work reliably (WebSocket)
 - [ ] Cross-browser compatibility verified
 - [ ] API documentation generated (OpenAPI/Swagger)
 - [ ] Performance benchmarks meet requirements
+- [ ] Database migration 003 applied (API indexes)
 - [ ] Code reviewed and merged to main branch
 - [ ] Documentation updated in README.md
+
+## Architecture Review
+
+**Status:** ✅ APPROVED (2025-11-10 by Winston, Architect)
+
+**Review Document:** `docs/architecture/epic-5-architecture-review.md`
+
+**Key Decisions:**
+- Real-time updates: WebSocket (not SSE)
+- API port: 8000 (not 8080)
+- Database access: Read-only mode for API server
+- Process architecture: Separate web server process
+
+**Pre-Implementation Requirements:**
+1. ✅ Epic 5 doc updated to specify WebSocket
+2. ✅ Epic 5 doc updated to specify port 8000
+3. ✅ Database migration created (migrations/003_add_api_indexes.sql)
+
+**Implementation Blockers Resolved:**
+- Database indexes for API performance
+- WebSocket integration pattern for EventManager
+- Read-only SQLite connection pattern documented

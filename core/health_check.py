@@ -10,6 +10,22 @@ from core.config import SystemConfig
 from core.logging_config import get_logger
 
 
+def parse_version(version_str: str) -> tuple:
+    """Parse version string into comparable tuple.
+
+    Args:
+        version_str: Version string like "4.12.0"
+
+    Returns:
+        Tuple of integers for version comparison
+    """
+    try:
+        parts = version_str.split('.')
+        return tuple(int(part) for part in parts[:3])  # Take first 3 parts
+    except (ValueError, AttributeError):
+        return (0, 0, 0)  # Fallback for unparseable versions
+
+
 class HealthCheckResult(BaseModel):
     """Result of health check execution."""
 
@@ -251,7 +267,7 @@ class HealthChecker:
             try:
                 import cv2
                 version = cv2.__version__
-                if version < "4.8.1":
+                if parse_version(version) < parse_version("4.8.1"):
                     issues.append(f"OpenCV {version} < 4.8.1")
                 else:
                     pass  # OK
@@ -262,7 +278,7 @@ class HealthChecker:
             try:
                 import coremltools
                 version = coremltools.__version__
-                if version < "7.0":
+                if parse_version(version) < parse_version("7.0"):
                     issues.append(f"CoreML Tools {version} < 7.0")
                 else:
                     pass  # OK

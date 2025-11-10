@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Recognition Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 600px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #ffffff;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: #2e7d32;
+            color: white;
+            border-radius: 4px;
+            margin-bottom: 2rem;
+            font-weight: 500;
+        }
+
+        .info {
+            background: #2a2a2a;
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+
+        .info h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #90caf9;
+        }
+
+        .info p {
+            margin-bottom: 0.5rem;
+            line-height: 1.6;
+        }
+
+        .api-link {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: #1976d2;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .api-link:hover {
+            background: #1565c0;
+        }
+
+        .version {
+            margin-top: 2rem;
+            opacity: 0.7;
+            font-size: 0.875rem;
+        }
+
+        code {
+            background: #333;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📹 Video Recognition System</h1>
+        <div class="status">✓ Web Server Running</div>
+
+        <div class="info">
+            <h2>Story 5.1: FastAPI Server Setup</h2>
+            <p>The web server is running successfully on <code>localhost:8000</code></p>
+            <p>This is a placeholder page for Epic 5 development.</p>
+            <p style="margin-top: 1.5rem;">
+                <strong>Next Steps:</strong><br>
+                Story 5.2: Event API Endpoints<br>
+                Story 5.3: Real-Time Event Streaming<br>
+                Story 5.4: Dashboard HTML/CSS Framework
+            </p>
+        </div>
+
+        <a href="/docs" class="api-link">📚 View API Documentation</a>
+
+        <div class="version">
+            Epic 5: Web Dashboard & Real-Time Monitoring<br>
+            Version 1.0.0 | Story 5.1 Complete
+        </div>
+    </div>
+
+    <script>
+        // Verify API is accessible
+        fetch('/api/health')
+            .then(response => response.json())
+            .then(data => {
+                console.log('✓ API Health Check:', data);
+            })
+            .catch(error => {
+                console.error('✗ API Health Check Failed:', error);
+            });
+    </script>
+</body>
+</html>

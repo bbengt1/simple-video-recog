@@ -269,6 +269,7 @@ def main():
         motion_detector = MotionDetector(config)
         frame_sampler = FrameSampler(config)
         coreml_detector = CoreMLDetector(config)
+        coreml_detector.load_model(config.coreml_model_path)  # Load CoreML model
         event_deduplicator = EventDeduplicator(config)
         ollama_client = OllamaClient(config)
         image_annotator = ImageAnnotator()
