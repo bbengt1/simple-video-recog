@@ -303,15 +303,17 @@ class MetricsCollector:
             system_start_time=self.system_start_time,
         )
 
-        # Calculate collection overhead
+        # Calculate collection overhead (time spent beyond CPU measurement)
         collection_end = time.time()
         collection_time = collection_end - collection_start
-        overhead_percent = (collection_time / 0.1) * 100  # Assuming 0.1s CPU measurement interval
-        snapshot.metrics_collection_overhead_percent = min(overhead_percent, 100.0)  # Cap at 100%
+        # Overhead is collection time minus the CPU measurement interval (0.1s)
+        overhead_time = max(0, collection_time - 0.1)
+        overhead_percent = (overhead_time / collection_time) * 100 if collection_time > 0 else 0.0
+        snapshot.metrics_collection_overhead_percent = overhead_percent
 
-        # Log warning if overhead is too high
-        if overhead_percent > 1.0:
-            self.logger.warning(f"Metrics collection overhead too high: {overhead_percent:.2f}%")
+        # Log warning if overhead is too high (>10% of total collection time)
+        if overhead_percent > 10.0:
+            self.logger.warning(f"Metrics collection overhead too high: {overhead_percent:.2f}% ({overhead_time:.3f}s beyond CPU measurement)")
 
         return snapshot
 

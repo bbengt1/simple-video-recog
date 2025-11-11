@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 # Track application startup time for uptime calculation
 _app_start_time = time.time()
 
+# Cache for legacy metrics endpoint to reduce collection frequency
+_metrics_cache = None
+_metrics_cache_time = 0
+_METRICS_CACHE_TTL = 10  # Cache metrics for 10 seconds
+
 
 @router.get("/metrics", response_model=DashboardMetricsResponse)
 async def get_dashboard_metrics(db_conn = Depends(get_db_connection)):
@@ -163,8 +168,18 @@ async def get_metrics():
     Get legacy processing metrics.
 
     Returns the original processing-focused metrics for backward compatibility.
+    Uses caching to reduce collection frequency.
     """
+    global _metrics_cache, _metrics_cache_time
+
     try:
+        # Check cache first
+        current_time = time.time()
+        if _metrics_cache is not None and (current_time - _metrics_cache_time) < _METRICS_CACHE_TTL:
+            logger.debug("Returning cached metrics")
+            return _metrics_cache
+
+        # Collect fresh metrics
         collector = get_metrics_collector()
         snapshot = collector.collect()
 
@@ -192,6 +207,10 @@ async def get_metrics():
             system_uptime_percent=snapshot.system_uptime_percent,
             version="1.0.0"
         )
+
+        # Cache the response
+        _metrics_cache = response
+        _metrics_cache_time = current_time
 
         logger.info("Legacy metrics retrieved successfully")
         return response
