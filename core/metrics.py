@@ -303,15 +303,17 @@ class MetricsCollector:
             system_start_time=self.system_start_time,
         )
 
-        # Calculate collection overhead
+        # Calculate collection overhead (time spent beyond CPU measurement)
         collection_end = time.time()
         collection_time = collection_end - collection_start
-        overhead_percent = (collection_time / 0.1) * 100  # Assuming 0.1s CPU measurement interval
-        snapshot.metrics_collection_overhead_percent = min(overhead_percent, 100.0)  # Cap at 100%
+        # Overhead is collection time minus the CPU measurement interval (0.1s)
+        overhead_time = max(0, collection_time - 0.1)
+        overhead_percent = (overhead_time / collection_time) * 100 if collection_time > 0 else 0.0
+        snapshot.metrics_collection_overhead_percent = overhead_percent
 
-        # Log warning if overhead is too high
-        if overhead_percent > 1.0:
-            self.logger.warning(f"Metrics collection overhead too high: {overhead_percent:.2f}%")
+        # Log warning if overhead is too high (>10% of total collection time)
+        if overhead_percent > 10.0:
+            self.logger.warning(f"Metrics collection overhead too high: {overhead_percent:.2f}% ({overhead_time:.3f}s beyond CPU measurement)")
 
         return snapshot
 
@@ -403,6 +405,10 @@ class MetricsCollector:
 
         return compact_line
 
+    def _pad_display_line(self, content: str) -> str:
+        """Pad a line to fit exactly within the display box (65 characters between │ symbols)."""
+        return f"│{content:<65}│"
+
     def get_status_display(self) -> str:
         """Get formatted status display string for console output.
 
@@ -452,27 +458,27 @@ class MetricsCollector:
 
             lines = [
                 "├─────────────────────────────────────────────────────────────────┤",
-                f"│ Runtime Metrics - {time.strftime('%Y-%m-%d %H:%M:%S')} (uptime: {uptime_str})     │",
+                self._pad_display_line(f"Runtime Metrics - {time.strftime('%Y-%m-%d %H:%M:%S')} (uptime: {uptime_str})"),
                 "├─────────────────────────────────────────────────────────────────┤",
-                "│ Processing:                                                      │",
-                f"│   Frames processed:        {snapshot.frames_processed:,}                               │",
-                f"│   Motion detected:         {snapshot.motion_detected:,} ({snapshot.motion_hit_rate:.1f}% hit rate)                 │",
-                f"│   Events created:          {snapshot.events_created:,}                                  │",
-                f"│   Events suppressed:       {snapshot.events_suppressed:,} (de-duplication)                  │",
-                "│                                                                  │",
-                "│ Performance (NFR Targets):                                       │",
-                f"│   CoreML inference:    {coreml_indicator}   avg {snapshot.coreml_inference_avg:.0f}ms (target <100ms)        │",
-                f"│   LLM inference:       {llm_indicator}   avg {snapshot.llm_inference_avg:.1f}s (target <2s)          │",
-                f"│   End-to-end latency:  {latency_indicator}   avg {snapshot.frame_processing_latency_avg:.1f}s (target <3s)          │",
-                "│                                                                  │",
-                "│ Resources:                                                       │",
-                f"│   CPU usage:           {cpu_indicator}   avg {snapshot.cpu_usage_avg:.1f}%, current {snapshot.cpu_usage_current:.1f}%         │",
-                f"│   Memory usage:        {mem_indicator}   {snapshot.memory_usage_gb:.1f}GB ({snapshot.memory_usage_percent:.1f}%)            │",
-                "│                                                                  │",
-                "│ Availability:                                                    │",
-                f"│   System uptime:       {uptime_indicator}   {snapshot.system_uptime_percent:.1f}%                       │",
-                "│                                                                  │",
-                "│ [✓] = Meeting NFR target  [⚠] = Approaching limit  [✗] = Failed │",
+                self._pad_display_line("Processing:"),
+                self._pad_display_line(f"  Frames processed:        {snapshot.frames_processed:,}"),
+                self._pad_display_line(f"  Motion detected:         {snapshot.motion_detected:,} ({snapshot.motion_hit_rate:.1f}% hit rate)"),
+                self._pad_display_line(f"  Events created:          {snapshot.events_created:,}"),
+                self._pad_display_line(f"  Events suppressed:       {snapshot.events_suppressed:,} (de-duplication)"),
+                self._pad_display_line(""),
+                self._pad_display_line("Performance (NFR Targets):"),
+                self._pad_display_line(f"  CoreML inference:    {coreml_indicator}   avg {snapshot.coreml_inference_avg:.0f}ms (target <100ms)"),
+                self._pad_display_line(f"  LLM inference:       {llm_indicator}   avg {snapshot.llm_inference_avg:.1f}s (target <2s)"),
+                self._pad_display_line(f"  End-to-end latency:  {latency_indicator}   avg {snapshot.frame_processing_latency_avg:.1f}s (target <3s)"),
+                self._pad_display_line(""),
+                self._pad_display_line("Resources:"),
+                self._pad_display_line(f"  CPU usage:           {cpu_indicator}   avg {snapshot.cpu_usage_avg:.1f}%, current {snapshot.cpu_usage_current:.1f}%"),
+                self._pad_display_line(f"  Memory usage:        {mem_indicator}   {snapshot.memory_usage_gb:.1f}GB ({snapshot.memory_usage_percent:.1f}%)"),
+                self._pad_display_line(""),
+                self._pad_display_line("Availability:"),
+                self._pad_display_line(f"  System uptime:       {uptime_indicator}   {snapshot.system_uptime_percent:.1f}%"),
+                self._pad_display_line(""),
+                self._pad_display_line("[✓] = Meeting NFR target  [⚠] = Approaching limit  [✗] = Failed"),
                 "└─────────────────────────────────────────────────────────────────┘",
             ]
 

@@ -4,12 +4,14 @@
 import eventStore from './state/EventStore.js';
 import WebSocketClient from './services/WebSocketClient.js';
 import EventFeed from './components/EventFeed.js';
+import MetricsPanel from './components/MetricsPanel.js';
 import ApiClient from './services/ApiClient.js';
 
 class DashboardApp {
     constructor() {
         this.wsClient = null;
         this.eventFeed = null;
+        this.metricsPanel = null;
         this.apiClient = new ApiClient();
         this.startTime = Date.now();
         this.uptimeInterval = null;
@@ -43,6 +45,10 @@ class DashboardApp {
 
         // Load initial events from REST API
         await this.eventFeed.loadInitialEvents();
+
+        // Initialize metrics panel
+        this.metricsPanel = new MetricsPanel('.metrics-panel');
+        await this.metricsPanel.init();
 
         // Connect to WebSocket for real-time updates
         this.wsClient = new WebSocketClient('ws://localhost:8000/ws/events', eventStore);
@@ -239,6 +245,10 @@ class DashboardApp {
 
         if (this.eventFeed) {
             this.eventFeed.destroy();
+        }
+
+        if (this.metricsPanel) {
+            this.metricsPanel.destroy();
         }
 
         if (this.uptimeInterval) {

@@ -103,6 +103,41 @@ class ConfigResponse(BaseModel):
     version: str
 
 
+class SystemMetrics(BaseModel):
+    """System health metrics for dashboard display."""
+    cpu_usage_percent: float = Field(..., ge=0.0, le=100.0)
+    memory_used: int = Field(..., ge=0)
+    memory_total: int = Field(..., gt=0)
+    disk_used: int = Field(..., ge=0)
+    disk_total: int = Field(..., gt=0)
+    disk_usage_percent: float = Field(..., ge=0.0, le=100.0)
+    system_uptime_seconds: int = Field(..., ge=0)
+    app_uptime_seconds: int = Field(..., ge=0)
+
+
+class EventStatistics(BaseModel):
+    """Event statistics for dashboard display."""
+    total_events: int = Field(..., ge=0)
+    events_today: int = Field(..., ge=0)
+    events_this_hour: int = Field(..., ge=0)
+    events_per_hour_avg: float = Field(..., ge=0.0)
+    events_per_hour_previous: float = Field(..., ge=0.0)
+
+
+class CameraActivity(BaseModel):
+    """Camera activity metrics for dashboard display."""
+    camera_id: str
+    event_count: int = Field(..., ge=0)
+    last_event_time: Optional[str] = None
+
+
+class DashboardMetricsResponse(BaseModel):
+    """Dashboard metrics response with system health, events, and cameras."""
+    system: SystemMetrics
+    events: EventStatistics
+    cameras: List[CameraActivity] = Field(default_factory=list)
+
+
 class ErrorDetail(BaseModel):
     """Error response detail."""
     code: str

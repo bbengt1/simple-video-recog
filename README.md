@@ -67,15 +67,20 @@ git clone <repository-url>
 cd video-recognition
 ```
 
-### 2. Create Virtual Environment
+### 2. Create Conda Environment (Recommended for CoreML)
 
 ```bash
-# Create virtual environment
-python3 -m venv venv
+# Install Miniconda (if not already installed)
+# Download from: https://docs.conda.io/en/latest/miniconda.html
 
-# Activate virtual environment (macOS)
-source venv/bin/activate
+# Create conda environment
+conda create -n video-recog python=3.12 -y
+
+# Activate conda environment
+conda activate video-recog
 ```
+
+**Note:** Use conda instead of venv for CoreML support on Apple Silicon. Virtual environments cannot access the system CoreML framework.
 
 ### 3. Install Dependencies
 
@@ -189,11 +194,11 @@ nano config/config.yaml
 Once you've completed the setup steps above, you can start the video recognition system:
 
 ```bash
-# Activate virtual environment
-source venv/bin/activate
+# Activate conda environment
+conda activate video-recog
 
 # Start the system
-python main.py config/config.yaml
+python main.py --config config/config.yaml
 ```
 
 The system will:
@@ -732,6 +737,32 @@ chmod 755 config/
 
 # Or change ownership if needed
 sudo chown -R $USER data/ logs/ config/
+```
+
+#### ❌ Conda Command Not Found
+```
+zsh: command not found: conda
+```
+
+**Solution:** Initialize conda in your shell:
+```bash
+# Exit any active virtual environment first
+deactivate
+
+# Initialize conda for your shell
+~/miniconda3/bin/conda init zsh
+
+# Restart your terminal (close and reopen)
+
+# Then activate and run
+conda activate video-recog && python main.py --config config/config.yaml
+```
+
+**Alternative (temporary fix):**
+```bash
+# Source conda manually for current session
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate video-recog && python main.py --config config/config.yaml
 ```
 
 ### Getting Help

@@ -25,6 +25,23 @@ class SystemConfig(BaseModel):
         default="camera_1", description="Camera identifier for multi-camera support"
     )
 
+    # RTSP Connection Settings
+    rtsp_buffer_size: int = Field(
+        default=1, ge=1, le=10, description="RTSP buffer size in frames (higher = more latency but better stability)"
+    )
+    rtsp_reconnect_attempts: int = Field(
+        default=10, ge=3, le=20, description="Maximum RTSP reconnection attempts before giving up"
+    )
+    rtsp_reconnect_delay_max: int = Field(
+        default=8, ge=1, le=30, description="Maximum delay between reconnection attempts in seconds"
+    )
+    rtsp_connection_timeout: int = Field(
+        default=10, ge=5, le=60, description="RTSP connection timeout in seconds"
+    )
+    rtsp_read_timeout: int = Field(
+        default=5, ge=1, le=30, description="RTSP read timeout in seconds"
+    )
+
     # Motion Detection
     motion_threshold: float = Field(
         default=0.5,
@@ -34,6 +51,9 @@ class SystemConfig(BaseModel):
     )
     frame_sample_rate: int = Field(
         default=5, ge=1, le=30, description="Frames per second to process during motion"
+    )
+    max_processing_fps: int = Field(
+        default=15, ge=5, le=30, description="Maximum processing frame rate to limit CPU usage"
     )
 
     # Object Detection

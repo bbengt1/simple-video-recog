@@ -60,3 +60,37 @@ export function formatDuration(seconds) {
     return `${secs}s`;
   }
 }
+
+// NEW: Format bytes (1288490188 → "1.2 GB")
+export function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+// NEW: Format percentage (45.234 → "45%")
+export function formatPercentage(value) {
+  return `${Math.round(value)}%`;
+}
+
+// NEW: Format uptime (432000 → "5d 0h 0m")
+export function formatUptime(seconds) {
+  if (seconds < 60) return '<1m';
+
+  const days = Math.floor(seconds / (24 * 3600));
+  const hours = Math.floor((seconds % (24 * 3600)) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+
+  return parts.length > 0 ? parts.join(' ') : '<1m';
+}
+
+// NEW: Format number with commas (1250 → "1,250")
+export function formatNumber(num) {
+  return num.toLocaleString();
+}

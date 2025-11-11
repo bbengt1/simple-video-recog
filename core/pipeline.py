@@ -123,6 +123,16 @@ class ProcessingPipeline:
         # Initialize metrics collector
         self.metrics_collector = MetricsCollector(config)
 
+        # Check if CoreML is available to avoid repeated error logs
+        self.coreml_available = (
+            self.coreml_detector.is_loaded and
+            self.coreml_detector.model_metadata and
+            self.coreml_detector.model_metadata.get('coreml_available', True)
+        )
+
+        if not self.coreml_available:
+            logger.info("CoreML framework unavailable - using motion-only detection mode")
+
 
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -156,6 +166,16 @@ class ProcessingPipeline:
         self.rtsp_client.start_capture()
         logger.info("RTSP frame capture started")
 
+        # Processing rate limiter to prevent 100% CPU usage
+        # Use configurable max processing FPS to balance performance and CPU usage
+        import time
+        import psutil
+        base_processing_interval = 1.0 / self.config.max_processing_fps
+        processing_interval = base_processing_interval
+        last_processing_time = time.time()
+        cpu_check_interval = 10  # Check CPU every 10 frames
+        frame_count = 0
+
         try:
             while not self.signal_handler.is_shutdown_requested():
                 # Check if we should display periodic status
@@ -169,9 +189,44 @@ class ProcessingPipeline:
                     continue  # Skip if no frame available
 
                 self.metrics_collector.increment_counter("frames_processed")
+                frame_count += 1
 
-                # Detect motion
-                has_motion, confidence, motion_mask = self.motion_detector.detect_motion(frame)
+                # Adaptive CPU-based rate limiting: Check CPU usage every 10 frames
+                if frame_count % cpu_check_interval == 0:
+                    cpu_percent = psutil.cpu_percent(interval=0.05)
+                    if cpu_percent > 75:
+                        # Critical CPU: Reduce processing rate significantly
+                        processing_interval = max(1.0 / 5.0, base_processing_interval * 3.0)
+                        logger.info(f"Critical CPU usage ({cpu_percent:.1f}%), reducing processing rate to {1.0/processing_interval:.1f} FPS")
+                    elif cpu_percent > 60:
+                        # High CPU: Reduce processing rate moderately
+                        processing_interval = max(1.0 / 8.0, base_processing_interval * 2.0)
+                        logger.debug(f"High CPU usage ({cpu_percent:.1f}%), reducing processing rate to {1.0/processing_interval:.1f} FPS")
+                    elif cpu_percent > 45:
+                        # Moderate CPU: Slight reduction
+                        processing_interval = max(1.0 / 12.0, base_processing_interval * 1.5)
+                        logger.debug(f"Moderate CPU usage ({cpu_percent:.1f}%), reducing processing rate to {1.0/processing_interval:.1f} FPS")
+                    else:
+                        # Normal CPU: Use base rate
+                        processing_interval = base_processing_interval
+
+                # Detect motion (with CPU-aware skipping for high load)
+                motion_skip_rate = 1  # Check every frame by default
+                if processing_interval > base_processing_interval * 2.0:  # If slowed down significantly (>50% reduction)
+                    motion_skip_rate = 3  # Skip 2 out of 3 frames for motion detection
+                elif processing_interval > base_processing_interval * 1.5:  # Moderate slowdown
+                    motion_skip_rate = 2  # Skip every other frame for motion detection
+
+                has_motion = False
+                confidence = 0.0
+                motion_mask = None
+
+                if frame_count % motion_skip_rate == 0:
+                    has_motion, confidence, motion_mask = self.motion_detector.detect_motion(frame)
+                else:
+                    # Skip motion detection for this frame to reduce CPU load
+                    # Create minimal motion mask (no motion detected)
+                    motion_mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
 
                 if has_motion:
                     # For now, we approximate motion detection with frame processing
@@ -183,32 +238,40 @@ class ProcessingPipeline:
                     if self.frame_sampler.should_process(self.metrics_collector.frames_processed):
                         # Process this frame
 
-                        # Stage 3: Object detection (CoreML)
+                        # Stage 3: Object detection
                         import time
                         detection_start = time.time()
                         detections = None
-                        try:
-                            detected_objects = self.coreml_detector.detect_objects(frame)
-                            detection_time = time.time() - detection_start
 
-                            # Create DetectionResult
-                            from core.models import DetectionResult
-                            detections = DetectionResult(
-                                objects=detected_objects,
-                                inference_time=detection_time,
-                                frame_shape=tuple(frame.shape)
-                            )
+                        if self.coreml_available:
+                            # Use CoreML detection
+                            try:
+                                detected_objects = self.coreml_detector.detect_objects(frame)
+                                detection_time = time.time() - detection_start
 
-                            # Record CoreML inference time
-                            self.metrics_collector.record_inference_time("coreml", detections.inference_time * 1000)  # Convert to ms
+                                # Create DetectionResult
+                                from core.models import DetectionResult
+                                detections = DetectionResult(
+                                    objects=detected_objects,
+                                    inference_time=detection_time,
+                                    frame_shape=tuple(frame.shape)
+                                )
 
-                            logger.debug(
-                                f"Object detection: objects={len(detections.objects)}, "
-                                f"inference_time={detections.inference_time:.3f}s"
-                            )
-                        except Exception as e:
-                            logger.warning(f"CoreML detection failed: {e}")
-                            # Create fallback DetectionResult with motion-only information
+                                # Record CoreML inference time
+                                self.metrics_collector.record_inference_time("coreml", detections.inference_time * 1000)  # Convert to ms
+
+                                logger.debug(
+                                    f"Object detection: objects={len(detections.objects)}, "
+                                    f"inference_time={detections.inference_time:.3f}s"
+                                )
+                            except Exception as e:
+                                logger.warning(f"CoreML detection failed unexpectedly: {e}")
+                                # Fall back to motion-only detection
+                                self.coreml_available = False  # Disable for future frames
+                                logger.info("Disabled CoreML detection due to failure - switching to motion-only mode")
+
+                        # Use motion-only detection (either CoreML unavailable or failed)
+                        if not detections:
                             from core.models import DetectionResult, DetectedObject, BoundingBox
                             detection_time = time.time() - detection_start
 
@@ -225,7 +288,7 @@ class ProcessingPipeline:
                                 frame_shape=tuple(frame.shape)
                             )
 
-                            logger.info(f"Created motion-only event (CoreML unavailable): confidence={confidence:.3f}")
+                            logger.debug(f"Created motion-only event: confidence={confidence:.3f}")
 
                         # Skip if no detections (shouldn't happen with fallback)
                         if not detections or not detections.objects:
@@ -343,6 +406,14 @@ class ProcessingPipeline:
                         except Exception as e:
                             logger.error(f"Event creation failed: {e}")
                             continue
+
+                # Rate limiting: Sleep to maintain target processing rate and reduce CPU usage
+                current_time = time.time()
+                elapsed = current_time - last_processing_time
+                if elapsed < processing_interval:
+                    sleep_time = processing_interval - elapsed
+                    time.sleep(sleep_time)
+                last_processing_time = time.time()
 
         except Exception as e:
             logger.error(f"Error in processing pipeline: {e}", exc_info=True)

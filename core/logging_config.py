@@ -13,6 +13,31 @@ from typing import Dict, Any
 from .config import SystemConfig
 
 
+class FFmpegNoiseFilter(logging.Filter):
+    """Filter to suppress FFmpeg TLS and debug noise messages."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Filter out FFmpeg TLS session invalidation messages and other noise."""
+        message = record.getMessage().lower()
+
+        # Filter out common FFmpeg TLS chatter
+        if any(phrase in message for phrase in [
+            'tls @',
+            'session has been invalidated',
+            'reference picture missing',
+            'decode_slice_header error',
+            'missing reference picture',
+            'default is 0',
+            'h264 @',
+            'avformat',
+            'avio',
+            'rtsp @'
+        ]):
+            return False
+
+        return True
+
+
 class ConsoleFormatter(logging.Formatter):
     """Custom console formatter with ISO 8601 timestamps and module names.
 
@@ -96,6 +121,10 @@ def setup_logging(config: SystemConfig) -> None:
     # Create console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(log_level)
+
+    # Add filter to suppress FFmpeg noise
+    ffmpeg_filter = FFmpegNoiseFilter()
+    console_handler.addFilter(ffmpeg_filter)
 
     # Create and set custom formatter
     formatter = ConsoleFormatter()
