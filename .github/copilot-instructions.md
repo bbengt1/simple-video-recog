@@ -44,10 +44,16 @@ brew install ollama
 ollama serve
 ollama pull llava:7b
 
+# Create conda environment (required for CoreML on Apple Silicon)
+conda create -n video-recog python=3.12 -y
+conda activate video-recog
+
 # Install dependencies
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 ```
+
+**Important:** Use conda instead of venv for CoreML support. Virtual environments cannot access the system CoreML framework required for Apple Silicon.
 
 ## Project-Specific Patterns
 

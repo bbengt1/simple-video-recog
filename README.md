@@ -67,15 +67,20 @@ git clone <repository-url>
 cd video-recognition
 ```
 
-### 2. Create Virtual Environment
+### 2. Create Conda Environment (Recommended for CoreML)
 
 ```bash
-# Create virtual environment
-python3 -m venv venv
+# Install Miniconda (if not already installed)
+# Download from: https://docs.conda.io/en/latest/miniconda.html
 
-# Activate virtual environment (macOS)
-source venv/bin/activate
+# Create conda environment
+conda create -n video-recog python=3.12 -y
+
+# Activate conda environment
+conda activate video-recog
 ```
+
+**Note:** Use conda instead of venv for CoreML support on Apple Silicon. Virtual environments cannot access the system CoreML framework.
 
 ### 3. Install Dependencies
 
