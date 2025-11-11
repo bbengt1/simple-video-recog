@@ -194,11 +194,11 @@ nano config/config.yaml
 Once you've completed the setup steps above, you can start the video recognition system:
 
 ```bash
-# Activate virtual environment
-source venv/bin/activate
+# Activate conda environment
+conda activate video-recog
 
 # Start the system
-python main.py config/config.yaml
+python main.py --config config/config.yaml
 ```
 
 The system will:
