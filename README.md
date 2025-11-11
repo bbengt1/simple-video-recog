@@ -739,6 +739,32 @@ chmod 755 config/
 sudo chown -R $USER data/ logs/ config/
 ```
 
+#### ❌ Conda Command Not Found
+```
+zsh: command not found: conda
+```
+
+**Solution:** Initialize conda in your shell:
+```bash
+# Exit any active virtual environment first
+deactivate
+
+# Initialize conda for your shell
+~/miniconda3/bin/conda init zsh
+
+# Restart your terminal (close and reopen)
+
+# Then activate and run
+conda activate video-recog && python main.py --config config/config.yaml
+```
+
+**Alternative (temporary fix):**
+```bash
+# Source conda manually for current session
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate video-recog && python main.py --config config/config.yaml
+```
+
 ### Getting Help
 
 If you encounter issues not covered here:
