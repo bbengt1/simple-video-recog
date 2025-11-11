@@ -3,6 +3,7 @@
 # Standard library imports
 import os
 import queue
+import sys
 import threading
 import time
 from typing import Optional
@@ -17,6 +18,19 @@ from core.exceptions import RTSPConnectionError
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+class SuppressStderr:
+    """Context manager to temporarily suppress stderr output."""
+
+    def __enter__(self):
+        self._original_stderr = sys.stderr
+        sys.stderr = open(os.devnull, 'w')
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stderr.close()
+        sys.stderr = self._original_stderr
 
 
 class RTSPCameraClient:
@@ -75,7 +89,9 @@ class RTSPCameraClient:
             # Set additional OpenCV properties for RTSP stability before opening
             os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = f'rtsp_transport;tcp|buffer_size;{self.buffer_size * 102400}|max_delay;5000000'
 
-            self.cap = cv2.VideoCapture(self.rtsp_url)
+            # Suppress FFmpeg chatter during connection
+            with SuppressStderr():
+                self.cap = cv2.VideoCapture(self.rtsp_url)
 
             # Configure RTSP connection for better stability
             if self.cap.isOpened():
@@ -149,8 +165,9 @@ class RTSPCameraClient:
         }
 
         try:
-            # Try to connect and read basic stream properties
-            temp_cap = cv2.VideoCapture(self.rtsp_url)
+            # Try to connect and read basic stream properties (suppress FFmpeg output)
+            with SuppressStderr():
+                temp_cap = cv2.VideoCapture(self.rtsp_url)
             if temp_cap.isOpened():
                 results['connected'] = True
 
@@ -164,7 +181,8 @@ class RTSPCameraClient:
                 results['fps'] = fps if fps > 0 else None
 
                 # Try to read a test frame
-                ret, frame = temp_cap.read()
+                with SuppressStderr():
+                    ret, frame = temp_cap.read()
                 if ret and frame is not None:
                     results['can_read_frames'] = True
                 else:
@@ -199,7 +217,9 @@ class RTSPCameraClient:
         assert self.cap is not None, "cap should not be None when is_connected() returns True"
 
         try:
-            ret, frame = self.cap.read()
+            # Suppress FFmpeg chatter during frame reading
+            with SuppressStderr():
+                ret, frame = self.cap.read()
 
             if not ret or frame is None or frame.size == 0:
                 return None

@@ -15,6 +15,11 @@ os.environ['OPENCV_FFMPEG_READ_ATTEMPTS'] = '8192'  # Double the default for bet
 os.environ['OPENCV_FFMPEG_DEBUG'] = '0'  # Disable FFmpeg debug output
 os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|buffer_size;1024000|max_delay;5000000'  # RTSP over TCP with larger buffer
 
+# Suppress FFmpeg verbose output and TLS chatter
+os.environ['AV_LOG_LEVEL'] = 'error'  # Only show errors, not warnings/info/debug
+os.environ['FFREPORT'] = 'file=/dev/null:level=error'  # Redirect FFmpeg reports to null
+os.environ['AV_LOG_FORCE_NOCOLOR'] = '1'  # Disable colored output
+
 # Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
