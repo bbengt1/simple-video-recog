@@ -90,6 +90,7 @@ class ProcessingPipeline:
         signal_handler: SignalHandler,
         storage_monitor: StorageMonitor,
         config: SystemConfig,
+        metrics_collector: Optional[MetricsCollector] = None,
     ):
         """Initialize processing pipeline with all components.
 
@@ -106,6 +107,7 @@ class ProcessingPipeline:
             signal_handler: Signal handler for graceful shutdown and hot-reload
             storage_monitor: Storage monitoring component
             config: System configuration
+            metrics_collector: Optional metrics collector (for split-screen UI)
         """
         self.rtsp_client = rtsp_client
         self.motion_detector = motion_detector
@@ -120,8 +122,9 @@ class ProcessingPipeline:
         self.storage_monitor = storage_monitor
         self.config = config
 
-        # Initialize metrics collector
-        self.metrics_collector = MetricsCollector(config)
+        # Initialize metrics collector (use provided one for split-screen UI)
+        self.metrics_collector = metrics_collector if metrics_collector is not None else MetricsCollector(config)
+        self.split_screen_mode = metrics_collector is not None
 
         # Check if CoreML is available to avoid repeated error logs
         self.coreml_available = (
@@ -178,10 +181,11 @@ class ProcessingPipeline:
 
         try:
             while not self.signal_handler.is_shutdown_requested():
-                # Check if we should display periodic status
-                if self.metrics_collector.should_log_metrics():
+                # Check if we should display periodic status (skip in split-screen mode)
+                if self.metrics_collector.should_log_metrics() and not self.split_screen_mode:
                     status_display = self.metrics_collector.get_status_display()
-                    logger.info("Periodic status update:\n" + status_display)
+                    # Print metrics directly to stdout to avoid logger interference with ANSI codes
+                    print(status_display, flush=True)
 
                 # Get latest frame from RTSP client queue
                 frame = self.rtsp_client.get_latest_frame()
@@ -458,9 +462,10 @@ class ProcessingPipeline:
         except Exception as e:
             logger.warning(f"[SHUTDOWN] Error saving final metrics: {e}")
 
-        # Log final metrics summary
-        try:
-            status_display = self.metrics_collector.get_status_display()
-            logger.info("Final metrics summary:\n" + status_display)
-        except Exception as e:
-            logger.warning(f"[SHUTDOWN] Error generating final metrics summary: {e}")
+        # Display final metrics summary (skip in split-screen mode)
+        if not self.split_screen_mode:
+            try:
+                status_display = self.metrics_collector.get_status_display()
+                print(status_display, flush=True)
+            except Exception as e:
+                logger.warning(f"[SHUTDOWN] Error generating final metrics summary: {e}")

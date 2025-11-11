@@ -27,8 +27,11 @@ open htmlcov/index.html
 
 ### Development Commands
 ```bash
-# Start system with config
+# Start system with config (split-screen UI enabled by default)
 python main.py --config config/config.yaml
+
+# Traditional console output (disable split-screen)
+python main.py --config config/config.yaml --no-split-screen
 
 # Debug mode with verbose logging
 python main.py --config config/config.yaml --log-level DEBUG

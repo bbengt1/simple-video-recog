@@ -484,9 +484,9 @@ class MetricsCollector:
 
             display_str = "\n".join(lines)
 
-        # Apply ANSI escape codes if supported
-        if self.use_ansi and not self.first_display:
-            # Clear screen and move cursor to home for in-place update
+        # Apply ANSI escape codes if supported for in-place updates
+        if self.use_ansi:
+            # Always clear screen and move cursor to home for consistent display
             display_str = f"{ANSI_HOME}{ANSI_CLEAR_SCREEN}{display_str}"
 
         self.first_display = False
