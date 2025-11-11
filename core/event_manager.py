@@ -1,6 +1,6 @@
 # Event manager for creating and broadcasting events
 
-from typing import Optional
+from typing import Optional, Union
 import logging
 
 from core.database import DatabaseManager
@@ -41,7 +41,7 @@ class EventManager:
         llm_description: str,
         image_path: str,
         json_log_path: str,
-        metadata: dict = None
+        metadata: Optional[dict] = None
     ) -> Optional[Event]:
         """
         Create and persist an event.

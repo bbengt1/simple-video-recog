@@ -50,12 +50,18 @@ def get_version_info() -> VersionInfo:
     Returns:
         VersionInfo object containing all version and runtime information.
     """
+    try:
+        platform_info = platform.platform()
+    except Exception:
+        # Fallback to basic platform info if uname fails
+        platform_info = f"{platform.system()} {platform.release()}"
+
     return VersionInfo(
         version=VERSION,
         build_date=BUILD_DATE,
         git_commit=GIT_COMMIT if GIT_COMMIT != "dev" else "dev",  # Use "dev" if not set
         python_version=sys.version,
-        platform=platform.platform(),
+        platform=platform_info,
         opencv_version=opencv_version,
         coreml_version=coreml_version,
         ollama_version=ollama_version,

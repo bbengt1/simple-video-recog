@@ -33,7 +33,7 @@ CREATE INDEX IF NOT EXISTS idx_events_event_id
 ON events(event_id);
 
 -- Update schema version
-UPDATE schema_version SET version = 3, updated_at = CURRENT_TIMESTAMP;
+UPDATE schema_version SET version = 3, applied_at = CURRENT_TIMESTAMP;
 
 COMMIT;
 
