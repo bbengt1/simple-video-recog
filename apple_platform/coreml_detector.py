@@ -197,7 +197,13 @@ class CoreMLDetector:
             return filtered_detections
 
         except Exception as e:
-            self.logger.error(f"Object detection failed: {str(e)}")
+            error_msg = str(e)
+            # Don't log errors for expected CoreML unavailability
+            if "CoreML.framework" in error_msg or "Cannot make predictions" in error_msg:
+                # This is expected on non-Apple Silicon hardware, let pipeline handle gracefully
+                pass
+            else:
+                self.logger.error(f"Object detection failed: {error_msg}")
             raise
 
     def _preprocess_frame(self, frame: np.ndarray) -> np.ndarray:

@@ -123,6 +123,16 @@ class ProcessingPipeline:
         # Initialize metrics collector
         self.metrics_collector = MetricsCollector(config)
 
+        # Check if CoreML is available to avoid repeated error logs
+        self.coreml_available = (
+            self.coreml_detector.is_loaded and
+            self.coreml_detector.model_metadata and
+            self.coreml_detector.model_metadata.get('coreml_available', True)
+        )
+
+        if not self.coreml_available:
+            logger.info("CoreML framework unavailable - using motion-only detection mode")
+
 
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -228,36 +238,40 @@ class ProcessingPipeline:
                     if self.frame_sampler.should_process(self.metrics_collector.frames_processed):
                         # Process this frame
 
-                        # Stage 3: Object detection (CoreML)
+                        # Stage 3: Object detection
                         import time
                         detection_start = time.time()
                         detections = None
-                        try:
-                            detected_objects = self.coreml_detector.detect_objects(frame)
-                            detection_time = time.time() - detection_start
 
-                            # Create DetectionResult
-                            from core.models import DetectionResult
-                            detections = DetectionResult(
-                                objects=detected_objects,
-                                inference_time=detection_time,
-                                frame_shape=tuple(frame.shape)
-                            )
+                        if self.coreml_available:
+                            # Use CoreML detection
+                            try:
+                                detected_objects = self.coreml_detector.detect_objects(frame)
+                                detection_time = time.time() - detection_start
 
-                            # Record CoreML inference time
-                            self.metrics_collector.record_inference_time("coreml", detections.inference_time * 1000)  # Convert to ms
+                                # Create DetectionResult
+                                from core.models import DetectionResult
+                                detections = DetectionResult(
+                                    objects=detected_objects,
+                                    inference_time=detection_time,
+                                    frame_shape=tuple(frame.shape)
+                                )
 
-                            logger.debug(
-                                f"Object detection: objects={len(detections.objects)}, "
-                                f"inference_time={detections.inference_time:.3f}s"
-                            )
-                        except Exception as e:
-                            error_msg = str(e)
-                            if "CoreML framework unavailable" in error_msg:
-                                logger.info(f"CoreML unavailable, using motion-only detection: {error_msg}")
-                            else:
-                                logger.warning(f"CoreML detection failed: {e}")
-                            # Create fallback DetectionResult with motion-only information
+                                # Record CoreML inference time
+                                self.metrics_collector.record_inference_time("coreml", detections.inference_time * 1000)  # Convert to ms
+
+                                logger.debug(
+                                    f"Object detection: objects={len(detections.objects)}, "
+                                    f"inference_time={detections.inference_time:.3f}s"
+                                )
+                            except Exception as e:
+                                logger.warning(f"CoreML detection failed unexpectedly: {e}")
+                                # Fall back to motion-only detection
+                                self.coreml_available = False  # Disable for future frames
+                                logger.info("Disabled CoreML detection due to failure - switching to motion-only mode")
+
+                        # Use motion-only detection (either CoreML unavailable or failed)
+                        if not detections:
                             from core.models import DetectionResult, DetectedObject, BoundingBox
                             detection_time = time.time() - detection_start
 
@@ -274,7 +288,7 @@ class ProcessingPipeline:
                                 frame_shape=tuple(frame.shape)
                             )
 
-                            logger.info(f"Created motion-only event (CoreML unavailable): confidence={confidence:.3f}")
+                            logger.debug(f"Created motion-only event: confidence={confidence:.3f}")
 
                         # Skip if no detections (shouldn't happen with fallback)
                         if not detections or not detections.objects:
