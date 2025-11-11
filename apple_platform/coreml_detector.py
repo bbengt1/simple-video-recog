@@ -116,14 +116,22 @@ class CoreMLDetector:
                 # Default dummy frame for common object detection models
                 dummy_frame = np.random.rand(416, 416, 3).astype(np.float32)
 
-            # Run warm-up inference
+            # Run warm-up inference (skip if CoreML framework unavailable)
             try:
+                # Test if CoreML framework is available by attempting a minimal prediction
                 _ = self.model.predict({'input': dummy_frame})
                 warmup_time = time.time() - start_time
                 self.logger.info(f"Model warm-up completed in {warmup_time:.3f}s")
                 self.model_metadata['warmup_time'] = warmup_time
+                self.model_metadata['coreml_available'] = True
             except Exception as e:
-                self.logger.warning(f"Model warm-up failed: {str(e)}")
+                error_msg = str(e)
+                if "CoreML.framework" in error_msg or "Cannot make predictions" in error_msg:
+                    self.logger.warning(f"CoreML framework unavailable (expected in non-Apple Silicon environments): {error_msg}")
+                    self.model_metadata['coreml_available'] = False
+                else:
+                    self.logger.warning(f"Model warm-up failed: {error_msg}")
+                    self.model_metadata['coreml_available'] = False
                 warmup_time = time.time() - start_time
                 self.model_metadata['warmup_time'] = warmup_time
 
@@ -147,10 +155,14 @@ class CoreMLDetector:
             List of detected objects with labels, confidence scores, and bounding boxes
 
         Raises:
-            RuntimeError: If model is not loaded
+            RuntimeError: If model is not loaded or CoreML is unavailable
         """
         if not self.is_loaded or self.model is None:
             raise RuntimeError("CoreML model not loaded. Call load_model() first.")
+
+        # Check if CoreML framework is available
+        if self.model_metadata and not self.model_metadata.get('coreml_available', True):
+            raise RuntimeError("CoreML framework unavailable. System will use motion-only detection fallback.")
 
         import time
         start_time = time.time()

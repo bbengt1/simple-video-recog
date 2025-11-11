@@ -35,6 +35,9 @@ class SystemConfig(BaseModel):
     frame_sample_rate: int = Field(
         default=5, ge=1, le=30, description="Frames per second to process during motion"
     )
+    max_processing_fps: int = Field(
+        default=15, ge=5, le=30, description="Maximum processing frame rate to limit CPU usage"
+    )
 
     # Object Detection
     coreml_model_path: str = Field(
