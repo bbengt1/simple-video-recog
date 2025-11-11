@@ -12,6 +12,19 @@ from typing import Optional
 import cv2
 import numpy as np
 
+# Configure FFmpeg logging to be completely silent
+try:
+    # Try to set FFmpeg log level via ctypes if available
+    import ctypes
+    try:
+        # Load libavformat and set log level to quiet (AV_LOG_QUIET = -8)
+        avformat = ctypes.CDLL('libavformat.so')
+        avformat.av_log_set_level(-8)
+    except (OSError, AttributeError):
+        pass
+except ImportError:
+    pass
+
 # Local application imports
 from core.config import SystemConfig
 from core.exceptions import RTSPConnectionError
@@ -24,13 +37,17 @@ class SuppressStderr:
     """Context manager to temporarily suppress stderr output."""
 
     def __enter__(self):
+        import fcntl
         self._original_stderr = sys.stderr
-        sys.stderr = open(os.devnull, 'w')
+        self._original_stderr_fd = os.dup(2)  # Duplicate stderr file descriptor
+        self._devnull = open(os.devnull, 'w')
+        os.dup2(self._devnull.fileno(), 2)  # Redirect stderr to /dev/null
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stderr.close()
-        sys.stderr = self._original_stderr
+        os.dup2(self._original_stderr_fd, 2)  # Restore original stderr
+        os.close(self._original_stderr_fd)
+        self._devnull.close()
 
 
 class RTSPCameraClient:

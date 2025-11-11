@@ -13,12 +13,15 @@ from pathlib import Path
 # Configure OpenCV FFmpeg settings for better RTSP stability
 os.environ['OPENCV_FFMPEG_READ_ATTEMPTS'] = '8192'  # Double the default for better RTSP reliability
 os.environ['OPENCV_FFMPEG_DEBUG'] = '0'  # Disable FFmpeg debug output
+os.environ['OPENCV_FFMPEG_LOGLEVEL'] = '-8'  # OpenCV-specific FFmpeg log level (quiet)
 os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|buffer_size;1024000|max_delay;5000000'  # RTSP over TCP with larger buffer
 
 # Suppress FFmpeg verbose output and TLS chatter
-os.environ['AV_LOG_LEVEL'] = 'error'  # Only show errors, not warnings/info/debug
-os.environ['FFREPORT'] = 'file=/dev/null:level=error'  # Redirect FFmpeg reports to null
+os.environ['AV_LOG_LEVEL'] = 'quiet'  # Complete silence - no output at all
+os.environ['FFREPORT'] = 'file=/dev/null:level=quiet'  # Redirect FFmpeg reports to null
 os.environ['AV_LOG_FORCE_NOCOLOR'] = '1'  # Disable colored output
+os.environ['FFMPEG_LOG_LEVEL'] = 'quiet'  # Additional FFmpeg log suppression
+os.environ['LIBAV_LOG_LEVEL'] = 'quiet'  # Libav compatibility
 
 # Add project root to path
 project_root = Path(__file__).parent
