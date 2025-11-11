@@ -6,8 +6,14 @@ the video processing pipeline.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+# Configure OpenCV FFmpeg settings for better RTSP stability
+os.environ['OPENCV_FFMPEG_READ_ATTEMPTS'] = '8192'  # Double the default for better RTSP reliability
+os.environ['OPENCV_FFMPEG_DEBUG'] = '0'  # Disable FFmpeg debug output
+os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp|buffer_size;1024000|max_delay;5000000'  # RTSP over TCP with larger buffer
 
 # Add project root to path
 project_root = Path(__file__).parent
@@ -76,6 +82,12 @@ Exit codes:
         "--dry-run",
         action="store_true",
         help="Validate configuration and connectivity without starting processing loop"
+    )
+
+    parser.add_argument(
+        "--test-rtsp",
+        action="store_true",
+        help="Test RTSP connectivity and stream properties"
     )
 
     parser.add_argument(
@@ -242,6 +254,35 @@ def main():
             else:
                 logger.error("Dry-run validation failed: Some validations or tests failed.")
                 sys.exit(EXIT_CONFIG_INVALID)
+
+        # Handle RTSP test mode
+        if args.test_rtsp:
+            logger.info("Testing RTSP connectivity...")
+
+            rtsp_client = RTSPCameraClient(config)
+
+            print("\n=== RTSP Connectivity Test ===")
+            results = rtsp_client.test_connectivity()
+
+            print(f"URL: {results['url']}")
+            print(f"Connected: {results['connected']}")
+            if results['frame_size']:
+                print(f"Frame Size: {results['frame_size']}")
+            if results['fps']:
+                print(f"FPS: {results['fps']}")
+            if results['error']:
+                print(f"Error: {results['error']}")
+            else:
+                print("No errors detected")
+
+            print("\n=== OpenCV FFmpeg Settings ===")
+            import os
+            ffmpeg_attempts = os.environ.get('OPENCV_FFMPEG_READ_ATTEMPTS', 'default')
+            ffmpeg_options = os.environ.get('OPENCV_FFMPEG_CAPTURE_OPTIONS', 'default')
+            print(f"Read Attempts: {ffmpeg_attempts}")
+            print(f"Capture Options: {ffmpeg_options}")
+
+            sys.exit(EXIT_SUCCESS if results['connected'] else EXIT_ERROR)
 
         # Normal mode: Initialize components after health checks pass
         logger.info("Performing startup health checks...")
