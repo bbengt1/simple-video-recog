@@ -96,7 +96,7 @@ class TestDatabaseManager:
         mock_connect.return_value = mock_conn
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
 
         version = db._get_schema_version()
         assert version == 0
@@ -111,7 +111,7 @@ class TestDatabaseManager:
         mock_connect.return_value = mock_conn
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
 
         version = db._get_schema_version()
         assert version == 1
@@ -125,7 +125,7 @@ class TestDatabaseManager:
         mock_connect.return_value = mock_conn
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         result = db.insert_event(sample_event)
@@ -159,7 +159,7 @@ class TestDatabaseManager:
         mock_connect.return_value = mock_conn
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         result = db.insert_event(sample_event)
@@ -177,7 +177,7 @@ class TestDatabaseManager:
         mock_connect.return_value = mock_conn
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         with pytest.raises(DatabaseWriteError, match="Failed to write event to database"):
@@ -203,7 +203,7 @@ class TestDatabaseManager:
         mock_connect.return_value = mock_conn
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         events = [sample_event]
@@ -226,7 +226,7 @@ class TestDatabaseManager:
         mock_cursor.execute.side_effect = [None, sqlite3.IntegrityError("UNIQUE constraint failed")]
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         events = [sample_event, sample_event]  # Same event twice
@@ -256,7 +256,7 @@ class TestDatabaseManager:
         mock_connect.return_value = mock_conn
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         events = [sample_event]
@@ -287,7 +287,7 @@ class TestDatabaseManager:
         )
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         result = db.get_event_by_id(sample_event.event_id)
@@ -310,7 +310,7 @@ class TestDatabaseManager:
         mock_connect.return_value = mock_conn
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         result = db.get_event_by_id("nonexistent_id")
@@ -339,7 +339,7 @@ class TestDatabaseManager:
         )]
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         start = datetime(2025, 11, 9, 0, 0, 0)
@@ -372,7 +372,7 @@ class TestDatabaseManager:
         )]
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         results = db.get_recent_events(limit=10)
@@ -390,7 +390,7 @@ class TestDatabaseManager:
         mock_connect.return_value = mock_conn
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         count = db.count_events()
@@ -420,7 +420,7 @@ class TestDatabaseManager:
         )]
 
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
         db._initialized = True
 
         results = db.get_events_by_camera("camera_1", limit=50)
@@ -432,7 +432,7 @@ class TestDatabaseManager:
         """Test database connection closing."""
         mock_conn = MagicMock()
         db = DatabaseManager(temp_db_path)
-        db.conn = mock_conn
+        db.conn = mock_conn  # type: ignore
 
         db.close()
 
