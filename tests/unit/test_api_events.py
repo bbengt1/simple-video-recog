@@ -41,27 +41,35 @@ class TestEventRoutes:
 class TestEventListEndpoint:
     """Test event list endpoint functionality."""
 
-    @patch('api.dependencies.get_config')
     @pytest.mark.asyncio
-    async def test_list_events_empty_database(self, mock_get_config):
+    async def test_list_events_empty_database(self):
         """Test event list returns empty results for empty database."""
-        # Mock the config with required attributes
-        mock_config = Mock()
-        mock_config.db_path = "data/events.db"
-        mock_get_config.return_value = mock_config
+        from unittest.mock import patch
 
-        app = create_app()
+        # Mock database connection and cursor
+        mock_conn = Mock()
+        mock_cursor = Mock()
+        mock_conn.cursor.return_value = mock_cursor
 
-        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver') as client:
-            response = await client.get('/api/events?limit=10&offset=0')
+        # Mock count query returns 0
+        mock_cursor.fetchone.return_value = (0,)
+        # Mock events query returns empty list
+        mock_cursor.fetchall.return_value = []
 
-            assert response.status_code == 200
-            data = response.json()
+        with patch('api.dependencies._db_conn', mock_conn), \
+             patch('api.dependencies._config', None):
+            app = create_app()
 
-            assert data['total'] == 0
-            assert data['limit'] == 10
-            assert data['offset'] == 0
-            assert data['events'] == []
+            async with AsyncClient(transport=ASGITransport(app=app), base_url='http://testserver') as client:
+                response = await client.get('/api/events?limit=10&offset=0')
+
+                assert response.status_code == 200
+                data = response.json()
+
+                assert data['total'] == 0
+                assert data['limit'] == 10
+                assert data['offset'] == 0
+                assert data['events'] == []
 
     @patch('api.dependencies.get_config')
     @pytest.mark.asyncio

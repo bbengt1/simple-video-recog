@@ -10,6 +10,11 @@ from api.dependencies import get_config, get_db_connection, close_db_connection
 class TestConfigDependency:
     """Test configuration dependency loading."""
 
+    def setup_method(self):
+        """Reset global state before each test."""
+        import api.dependencies
+        api.dependencies._config = None
+
     @patch('api.dependencies.load_config')
     def test_get_config_loads_once(self, mock_load_config):
         """Test that config is loaded only once and cached."""

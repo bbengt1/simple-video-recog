@@ -48,6 +48,9 @@ class TestHealthChecker:
     @pytest.fixture
     def health_checker(self, mock_config):
         """Create HealthChecker instance."""
+        # Set required config attributes for StorageMonitor
+        mock_config.max_storage_gb = 50.0
+        mock_config.storage_check_interval = 100
         return HealthChecker(mock_config, timeout=5)
 
     def test_init(self, mock_config):
@@ -241,7 +244,7 @@ class TestHealthChecker:
 
         success, message = health_checker._check_platform()
         assert success is True
-        assert "✓ Platform validated: macOS 14.2 on arm64" in message
+        assert "✓ Platform validated: macOS 14.2 on Apple" in message
 
     @patch('platform.system')
     def test_check_platform_wrong_os(self, mock_system, health_checker):
@@ -591,34 +594,52 @@ class TestHealthChecker:
         assert success is False
         assert "No write permission" in message
 
-    @patch('shutil.disk_usage')
-    def test_check_storage_availability_success(self, mock_disk_usage, health_checker):
+    @patch('core.storage_monitor.StorageMonitor')
+    def test_check_storage_availability_success(self, mock_storage_monitor_class, health_checker):
         """Test storage availability check passes with normal usage."""
-        # Mock disk usage: 100GB total, 20GB used, 80GB free
-        mock_disk_usage.return_value = (100 * 1024**3, 20 * 1024**3, 80 * 1024**3)
-        health_checker.config.max_storage_gb = 50.0
+        # Mock StorageMonitor instance and its check_usage method
+        mock_monitor = Mock()
+        mock_stats = Mock()
+        mock_stats.total_bytes = 20 * 1024**3  # 20GB used
+        mock_stats.limit_bytes = 50 * 1024**3  # 50GB limit
+        mock_stats.percentage_used = 0.4  # 40%
+        mock_stats.is_over_limit = False
+        mock_monitor.check_usage.return_value = mock_stats
+        mock_storage_monitor_class.return_value = mock_monitor
 
         success, message = health_checker._check_storage_availability()
         assert success is True
         assert "✓ Storage:" in message
 
-    @patch('shutil.disk_usage')
-    def test_check_storage_availability_limit_exceeded(self, mock_disk_usage, health_checker):
+    @patch('core.storage_monitor.StorageMonitor')
+    def test_check_storage_availability_limit_exceeded(self, mock_storage_monitor_class, health_checker):
         """Test storage availability check fails when limit is exceeded."""
-        # Mock disk usage: 100GB total, 60GB used, 40GB free
-        mock_disk_usage.return_value = (100 * 1024**3, 60 * 1024**3, 40 * 1024**3)
-        health_checker.config.max_storage_gb = 50.0
+        # Mock StorageMonitor instance and its check_usage method
+        mock_monitor = Mock()
+        mock_stats = Mock()
+        mock_stats.total_bytes = 60 * 1024**3  # 60GB used
+        mock_stats.limit_bytes = 50 * 1024**3  # 50GB limit
+        mock_stats.percentage_used = 1.2  # 120%
+        mock_stats.is_over_limit = True
+        mock_monitor.check_usage.return_value = mock_stats
+        mock_storage_monitor_class.return_value = mock_monitor
 
         success, message = health_checker._check_storage_availability()
         assert success is False
         assert "Storage limit exceeded" in message
 
-    @patch('shutil.disk_usage')
-    def test_check_storage_availability_warning(self, mock_disk_usage, health_checker):
+    @patch('core.storage_monitor.StorageMonitor')
+    def test_check_storage_availability_warning(self, mock_storage_monitor_class, health_checker):
         """Test storage availability check warns when usage is high."""
-        # Mock disk usage: 100GB total, 45GB used, 55GB free (90% of 50GB limit)
-        mock_disk_usage.return_value = (100 * 1024**3, 45 * 1024**3, 55 * 1024**3)
-        health_checker.config.max_storage_gb = 50.0
+        # Mock StorageMonitor instance and its check_usage method
+        mock_monitor = Mock()
+        mock_stats = Mock()
+        mock_stats.total_bytes = 45 * 1024**3  # 45GB used
+        mock_stats.limit_bytes = 50 * 1024**3  # 50GB limit
+        mock_stats.percentage_used = 0.9  # 90%
+        mock_stats.is_over_limit = False
+        mock_monitor.check_usage.return_value = mock_stats
+        mock_storage_monitor_class.return_value = mock_monitor
 
         success, message = health_checker._check_storage_availability()
         assert success is True

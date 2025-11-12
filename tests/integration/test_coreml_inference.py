@@ -172,7 +172,7 @@ class TestCoreMLInferenceIntegration:
 
         for frame in test_frames:
             processed = detector._preprocess_frame(frame)
-            assert processed.shape == (416, 416, 3)
+            assert processed.shape == (3, 416, 416)  # CHW format
             assert processed.dtype == np.float32
             assert np.all(processed >= 0.0) and np.all(processed <= 1.0)
 

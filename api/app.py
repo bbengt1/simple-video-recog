@@ -1,7 +1,8 @@
 # FastAPI application for video recognition system
 
-import logging
 import asyncio
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -12,6 +13,21 @@ from api.routes import events, health, metrics, stream
 from core.config import load_config
 
 logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle application startup and shutdown events."""
+    # Startup
+    ws_manager = stream.get_websocket_manager()
+    asyncio.create_task(ws_manager.start_heartbeat(interval=30))
+    logger.info("WebSocket heartbeat task started")
+
+    yield
+
+    # Shutdown
+    ws_manager = stream.get_websocket_manager()
+    await ws_manager.close_all()
+    logger.info("All WebSocket connections closed")
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
@@ -25,7 +41,8 @@ def create_app() -> FastAPI:
         version="1.0.0",
         description="REST API and WebSocket for event access and real-time monitoring",
         docs_url="/docs",
-        redoc_url="/redoc"
+        redoc_url="/redoc",
+        lifespan=lifespan
     )
 
     # CORS middleware
@@ -60,20 +77,6 @@ def create_app() -> FastAPI:
     events_dir = Path("data/events")
     if events_dir.exists():
         app.mount("/images", StaticFiles(directory=events_dir), name="images")
-
-    # Startup event to start WebSocket heartbeat
-    @app.on_event("startup")
-    async def startup_event():
-        ws_manager = stream.get_websocket_manager()
-        asyncio.create_task(ws_manager.start_heartbeat(interval=30))
-        logger.info("WebSocket heartbeat task started")
-
-    # Shutdown event to close all WebSocket connections
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        ws_manager = stream.get_websocket_manager()
-        await ws_manager.close_all()
-        logger.info("All WebSocket connections closed")
 
     logger.info("FastAPI application created with WebSocket support")
     return app

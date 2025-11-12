@@ -41,7 +41,7 @@ class TestCreateApp:
         assert cors_middleware is not None
 
         # Check CORS options
-        options = cors_middleware.options
+        options = cors_middleware.kwargs
         assert options["allow_origins"] == ["http://localhost:8000", "http://127.0.0.1:8000"]
         assert options["allow_credentials"] is True
         assert options["allow_methods"] == ["*"]
@@ -65,7 +65,7 @@ class TestCreateApp:
         app = create_app()
 
         assert app.title == "Local Video Recognition System API"
-        assert app.description == "REST API for event access and system monitoring"
+        assert app.description == "REST API and WebSocket for event access and real-time monitoring"
         assert app.version == "1.0.0"
 
     def test_create_app_with_test_client(self):

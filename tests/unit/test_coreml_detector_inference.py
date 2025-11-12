@@ -116,13 +116,13 @@ class TestCoreMLDetectorInference:
 
         processed = detector._preprocess_frame(bgr_frame)
 
-        # Check RGB conversion (BGR -> RGB swaps B and R)
-        assert processed.shape == (416, 416, 3)
+        # Check RGB conversion (BGR -> RGB swaps B and R) and CHW transpose
+        assert processed.shape == (3, 416, 416)  # CHW format
         assert processed.dtype == np.float32
-        # After conversion: BGR(255,128,64) -> RGB(64,128,255)
-        assert processed[0, 0, 0] == 64/255.0   # Red channel
-        assert processed[0, 0, 1] == 128/255.0  # Green channel
-        assert processed[0, 0, 2] == 255/255.0  # Blue channel
+        # After conversion: BGR(255,128,64) -> RGB(64,128,255) -> CHW(64,128,255 at [0,0,0])
+        assert processed[0, 0, 0] == 64/255.0   # Red channel (first in CHW)
+        assert processed[1, 0, 0] == 128/255.0  # Green channel (second in CHW)
+        assert processed[2, 0, 0] == 255/255.0  # Blue channel (third in CHW)
 
     def test_preprocess_frame_resize(self, sample_config, mock_coreml_model):
         """Test frame resizing during preprocessing."""
@@ -135,7 +135,7 @@ class TestCoreMLDetectorInference:
 
         processed = detector._preprocess_frame(input_frame)
 
-        assert processed.shape == (208, 208, 3)
+        assert processed.shape == (3, 208, 208)  # CHW format
 
     def test_preprocess_frame_default_size(self, sample_config, mock_coreml_model):
         """Test default size when model metadata unavailable."""
@@ -148,7 +148,7 @@ class TestCoreMLDetectorInference:
 
         processed = detector._preprocess_frame(input_frame)
 
-        assert processed.shape == (416, 416, 3)  # Default size
+        assert processed.shape == (3, 416, 416)  # Default size, CHW format
 
     def test_postprocess_detections_empty_outputs(self, sample_config, mock_coreml_model):
         """Test postprocessing with empty model outputs."""

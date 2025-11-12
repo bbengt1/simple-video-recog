@@ -56,7 +56,7 @@ class TestDatabaseIntegration:
         db = initialized_db
 
         # Check that tables exist
-        cursor = db.conn.cursor()
+        cursor = db._get_connection().cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = {row[0] for row in cursor.fetchall()}
 
@@ -97,7 +97,7 @@ class TestDatabaseIntegration:
             events.append(event)
 
         # Verify events were inserted
-        cursor = db.conn.cursor()
+        cursor = db._get_connection().cursor()
         cursor.execute("SELECT COUNT(*) FROM events")
         count = cursor.fetchone()[0]
         assert count == 5
@@ -131,7 +131,7 @@ class TestDatabaseIntegration:
         assert events_inserted == 1000
 
         # Verify all events persisted
-        cursor = db.conn.cursor()
+        cursor = db._get_connection().cursor()
         cursor.execute("SELECT COUNT(*) FROM events WHERE event_id LIKE 'evt_bulk_%'")
         count = cursor.fetchone()[0]
         assert count == 1000
@@ -186,7 +186,7 @@ class TestDatabaseIntegration:
         assert failed == 0
 
         # Verify all events persisted
-        cursor = db.conn.cursor()
+        cursor = db._get_connection().cursor()
         cursor.execute("SELECT COUNT(*) FROM events WHERE event_id LIKE 'evt_batch_%'")
         count = cursor.fetchone()[0]
         assert count == 100
@@ -213,7 +213,7 @@ class TestDatabaseIntegration:
         assert failed == 5     # 5 duplicates
 
         # Verify only unique events persisted
-        cursor = db.conn.cursor()
+        cursor = db._get_connection().cursor()
         cursor.execute("SELECT COUNT(*) FROM events WHERE event_id LIKE 'evt_dup_%'")
         count = cursor.fetchone()[0]
         assert count == 5
@@ -294,7 +294,7 @@ class TestDatabaseIntegration:
         assert not success2
 
         # Verify only one event exists
-        cursor = db.conn.cursor()
+        cursor = db._get_connection().cursor()
         cursor.execute("SELECT COUNT(*) FROM events WHERE event_id = 'evt_duplicate_test'")
         count = cursor.fetchone()[0]
         assert count == 1
@@ -308,10 +308,10 @@ class TestDatabaseIntegration:
         db.insert_event(event)
 
         # Connection should still be open
-        assert db.conn is not None
+        assert db._get_connection() is not None
 
         # Should be able to query
-        cursor = db.conn.cursor()
+        cursor = db._get_connection().cursor()
         cursor.execute("SELECT event_id FROM events WHERE event_id = 'evt_persistence_test'")
         result = cursor.fetchone()
         assert result[0] == "evt_persistence_test"

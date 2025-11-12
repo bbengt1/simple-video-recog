@@ -37,15 +37,18 @@ def test_processing_pipeline_component_integration(sample_config):
     # Create additional required components
     coreml_detector = CoreMLDetector(config)
     event_deduplicator = EventDeduplicator(config)
+    mock_event_manager = Mock()
     ollama_client = OllamaClient(config)
     image_annotator = ImageAnnotator()
     mock_database = Mock(spec=DatabaseManager)
     mock_signal_handler = Mock()
+    mock_storage_monitor = Mock()
 
     # Create pipeline
     pipeline = ProcessingPipeline(
         rtsp_client, motion_detector, frame_sampler, coreml_detector,
-        event_deduplicator, ollama_client, image_annotator, mock_database, mock_signal_handler, config
+        event_deduplicator, mock_event_manager, ollama_client, image_annotator,
+        mock_database, mock_signal_handler, mock_storage_monitor, config
     )
 
     # Test with static frame (no motion expected after learning phase)
@@ -106,14 +109,17 @@ def test_processing_pipeline_metrics_workflow(sample_config):
     # Create additional required components
     coreml_detector = CoreMLDetector(config)
     event_deduplicator = EventDeduplicator(config)
+    mock_event_manager = Mock()
     ollama_client = OllamaClient(config)
     image_annotator = ImageAnnotator()
     mock_database = Mock(spec=DatabaseManager)
     mock_signal_handler = Mock()
+    mock_storage_monitor = Mock()
 
     pipeline = ProcessingPipeline(
         rtsp_client, motion_detector, frame_sampler, coreml_detector,
-        event_deduplicator, ollama_client, image_annotator, mock_database, mock_signal_handler, config
+        event_deduplicator, mock_event_manager, ollama_client, image_annotator,
+        mock_database, mock_signal_handler, mock_storage_monitor, config
     )
 
     # Assert metrics structure (metrics are tracked internally by MetricsCollector)
@@ -176,9 +182,11 @@ def test_processing_pipeline_event_persistence(sample_config):
         mock_sampler = Mock(spec=FrameSampler)
         mock_coreml = Mock(spec=CoreMLDetector)
         mock_deduplicator = Mock(spec=EventDeduplicator)
+        mock_event_manager = Mock()
         mock_ollama = Mock(spec=OllamaClient)
         mock_image_annotator = Mock(spec=ImageAnnotator)
         mock_signal_handler = Mock()
+        mock_storage_monitor = Mock()
 
         # Setup mocks to simulate successful processing
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -212,7 +220,8 @@ def test_processing_pipeline_event_persistence(sample_config):
         # Create pipeline
         pipeline = ProcessingPipeline(
             mock_rtsp, mock_motion, mock_sampler, mock_coreml,
-            mock_deduplicator, mock_ollama, mock_image_annotator, database_manager, mock_signal_handler, config
+            mock_deduplicator, mock_event_manager, mock_ollama, mock_image_annotator,
+            database_manager, mock_signal_handler, mock_storage_monitor, config
         )
 
         # Act: Simulate processing one frame (this would normally happen in run())

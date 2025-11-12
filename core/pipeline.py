@@ -147,7 +147,7 @@ class ProcessingPipeline:
         snapshot = self.metrics_collector.collect()
         return {
             "total_frames_captured": snapshot.frames_processed,  # Note: this is approximate
-            "frames_with_motion": snapshot.frames_processed,  # Note: this is approximate
+            "frames_with_motion": snapshot.motion_detected,
             "frames_sampled": snapshot.frames_processed,  # Note: this is approximate
             "frames_processed": snapshot.frames_processed,
             "objects_detected": 0,  # Not tracked in MetricsCollector
@@ -233,8 +233,8 @@ class ProcessingPipeline:
                     motion_mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
 
                 if has_motion:
-                    # For now, we approximate motion detection with frame processing
-                    # In a more complete implementation, we'd track motion separately
+                    # Record motion detection
+                    self.metrics_collector.increment_counter("motion_detected")
                     logger.info(f"Motion detected: confidence={confidence:.3f}")
 
                     # Apply sampling to motion-triggered frames

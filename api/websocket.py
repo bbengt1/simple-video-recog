@@ -1,11 +1,12 @@
 # WebSocket connection manager for real-time event streaming
 
-from fastapi import WebSocket
-from typing import Dict
 import asyncio
 import logging
 import uuid
 from datetime import datetime
+from typing import Dict
+
+from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 

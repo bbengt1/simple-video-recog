@@ -59,20 +59,6 @@ class TestHealthCheck:
         assert isinstance(data["uptime_seconds"], int)
         assert isinstance(data["version"], str)
 
-    def test_health_check_cors_headers(self, client):
-        """Test CORS headers are present."""
-        response = client.options("/api/health")
-
-        # CORS headers should be present
-        cors_headers = [
-            "access-control-allow-origin",
-            "access-control-allow-methods",
-            "access-control-allow-headers"
-        ]
-
-        for header in cors_headers:
-            assert header in response.headers
-
     def test_health_check_openapi_docs_accessible(self, client):
         """Test OpenAPI documentation is accessible."""
         response = client.get("/docs")

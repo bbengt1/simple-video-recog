@@ -5,10 +5,13 @@ from unittest.mock import Mock
 
 from core.config import SystemConfig
 from core.database import DatabaseManager
+from core.event_manager import EventManager
 from core.motion_detector import MotionDetector
 from core.pipeline import FrameSampler, ProcessingPipeline
 from core.events import EventDeduplicator
 from core.image_annotator import ImageAnnotator
+from core.signals import SignalHandler
+from core.storage_monitor import StorageMonitor
 from apple_platform.coreml_detector import CoreMLDetector
 from integrations.rtsp_client import RTSPCameraClient
 from integrations.ollama import OllamaClient
@@ -89,17 +92,21 @@ class TestProcessingPipeline:
         mock_motion = Mock(spec=MotionDetector)
         mock_sampler = Mock(spec=FrameSampler)
         mock_coreml = Mock(spec=CoreMLDetector)
+        mock_coreml.is_loaded = True
+        mock_coreml.model_metadata = {'coreml_available': True}
         mock_deduplicator = Mock(spec=EventDeduplicator)
+        mock_event_manager = Mock(spec=EventManager)
         mock_ollama = Mock(spec=OllamaClient)
         mock_image_annotator = Mock(spec=ImageAnnotator)
         mock_database = Mock(spec=DatabaseManager)
+        mock_signal_handler = Mock(spec=SignalHandler)
+        mock_storage_monitor = Mock(spec=StorageMonitor)
 
         # Act
-        mock_signal_handler = Mock()
         pipeline = ProcessingPipeline(
             mock_rtsp, mock_motion, mock_sampler, mock_coreml,
-            mock_deduplicator, mock_ollama, mock_image_annotator, mock_database,
-            mock_signal_handler, config
+            mock_deduplicator, mock_event_manager, mock_ollama, mock_image_annotator,
+            mock_database, mock_signal_handler, mock_storage_monitor, config
         )
 
         # Assert
@@ -116,7 +123,7 @@ class TestProcessingPipeline:
         }
         assert pipeline.get_metrics() == expected_metrics
 
-    def test_processing_pipeline_get_metrics_returns_copy(self, sample_config):
+    def test_get_metrics_returns_copy(self, sample_config):
         """Test get_metrics returns a copy, not reference to internal dict."""
         # Arrange
         config = SystemConfig(**sample_config)
@@ -124,16 +131,20 @@ class TestProcessingPipeline:
         mock_motion = Mock(spec=MotionDetector)
         mock_sampler = Mock(spec=FrameSampler)
         mock_coreml = Mock(spec=CoreMLDetector)
+        mock_coreml.is_loaded = True
+        mock_coreml.model_metadata = {'coreml_available': True}
         mock_deduplicator = Mock(spec=EventDeduplicator)
+        mock_event_manager = Mock(spec=EventManager)
         mock_ollama = Mock(spec=OllamaClient)
         mock_image_annotator = Mock(spec=ImageAnnotator)
         mock_database = Mock(spec=DatabaseManager)
+        mock_signal_handler = Mock(spec=SignalHandler)
+        mock_storage_monitor = Mock(spec=StorageMonitor)
 
-        mock_signal_handler = Mock()
         pipeline = ProcessingPipeline(
             mock_rtsp, mock_motion, mock_sampler, mock_coreml,
-            mock_deduplicator, mock_ollama, mock_image_annotator, mock_database,
-            mock_signal_handler, config
+            mock_deduplicator, mock_event_manager, mock_ollama, mock_image_annotator,
+            mock_database, mock_signal_handler, mock_storage_monitor, config
         )
         metrics = pipeline.get_metrics()
 
@@ -151,10 +162,15 @@ class TestProcessingPipeline:
         mock_motion = Mock(spec=MotionDetector)
         mock_sampler = Mock(spec=FrameSampler)
         mock_coreml = Mock(spec=CoreMLDetector)
+        mock_coreml.is_loaded = True
+        mock_coreml.model_metadata = {'coreml_available': True}
         mock_deduplicator = Mock(spec=EventDeduplicator)
+        mock_event_manager = Mock(spec=EventManager)
         mock_ollama = Mock(spec=OllamaClient)
         mock_image_annotator = Mock(spec=ImageAnnotator)
         mock_database = Mock(spec=DatabaseManager)
+        mock_signal_handler = Mock(spec=SignalHandler)
+        mock_storage_monitor = Mock(spec=StorageMonitor)
 
         # Setup mocks
         import numpy as np
@@ -163,23 +179,23 @@ class TestProcessingPipeline:
         mock_motion.detect_motion.return_value = (True, 0.8, np.zeros((480, 640), dtype=np.uint8))
         mock_sampler.should_process.return_value = True
 
-        mock_signal_handler = Mock()
         pipeline = ProcessingPipeline(
             mock_rtsp, mock_motion, mock_sampler, mock_coreml,
-            mock_deduplicator, mock_ollama, mock_image_annotator, mock_database,
-            mock_signal_handler, config
+            mock_deduplicator, mock_event_manager, mock_ollama, mock_image_annotator,
+            mock_database, mock_signal_handler, mock_storage_monitor, config
         )
 
         # Act: Simulate processing a few frames by directly setting metrics collector state
         # Note: In real implementation, we'd need to modify run() to be more testable
         # For now, we'll test the metrics directly
         pipeline.metrics_collector.frames_processed = 5  # Simulate frames processed
+        pipeline.metrics_collector.motion_detected = 3   # Simulate motion detected in some frames
         pipeline.metrics_collector.events_created = 2
 
         # Assert
         metrics = pipeline.get_metrics()
         assert metrics["total_frames_captured"] == 5  # frames_processed used as proxy
-        assert metrics["frames_with_motion"] == 5     # frames_processed used as proxy
+        assert metrics["frames_with_motion"] == 3     # motion_detected count
         assert metrics["frames_sampled"] == 5         # frames_processed used as proxy
         assert metrics["frames_processed"] == 5
         assert metrics["events_created"] == 2
