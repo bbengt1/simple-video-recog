@@ -1,4 +1,6 @@
 {
+  "python.defaultInterpreterPath": "/Users/brentbengtson/miniconda3/envs/video-recog/bin/python",
+  "python.terminal.activateEnvironment": true,
   "chat.agent.enabled": true,
   "chat.agent.maxRequests": 500000000,
   "github.copilot.chat.agent.runTasks": true,

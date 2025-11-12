@@ -33,8 +33,8 @@ class Event(BaseModel):
     json_log_path: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "event_id": "evt_1699459335_a7b3c",
                 "timestamp": "2025-11-08T14:32:15Z",
@@ -52,6 +52,7 @@ class Event(BaseModel):
                 "created_at": "2025-11-08T14:32:16Z"
             }
         }
+    }
 
 
 class EventListResponse(BaseModel):

@@ -154,6 +154,9 @@ class OllamaClient:
             # Start timing LLM inference
             start_time = time.perf_counter()
 
+            # Log request details for debugging
+            self.logger.debug(f"Sending to Ollama: model={self.config.ollama_model}, prompt='{prompt[:50]}...', image_size={len(base64_image)} chars")
+
             # Call Ollama vision API
             response = ollama.generate(
                 model=self.config.ollama_model,
@@ -200,6 +203,13 @@ class OllamaClient:
         Returns:
             Base64-encoded JPEG data URL.
         """
+        # Validate frame
+        if frame is None or frame.size == 0:
+            raise ValueError("Frame is None or empty")
+
+        if len(frame.shape) != 3 or frame.shape[2] != 3:
+            raise ValueError(f"Invalid frame shape: {frame.shape}, expected (H, W, 3)")
+
         # Convert BGR to RGB for JPEG encoding
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -212,8 +222,19 @@ class OllamaClient:
         base64_bytes = base64.b64encode(buffer.tobytes())
         base64_string = base64_bytes.decode('utf-8')
 
-        # Return as data URL format expected by Ollama
-        return f"data:image/jpeg;base64,{base64_string}"
+        # Validate base64 string
+        try:
+            # Test that we can decode it back
+            test_decode = base64.b64decode(base64_string)
+            if len(test_decode) == 0:
+                raise ValueError("Base64 decoding resulted in empty data")
+        except Exception as e:
+            raise ValueError(f"Generated invalid base64: {e}")
+
+        self.logger.debug(f"Encoded frame {frame.shape} to base64 JPEG ({len(base64_string)} chars)")
+
+        # Return base64 string (Ollama expects just the base64 data, not data URL format)
+        return base64_string
 
     def _construct_vision_prompt(self, object_labels: list[str]) -> str:
         """Construct vision prompt with detected object context.

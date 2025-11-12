@@ -126,6 +126,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         result = db.insert_event(sample_event)
 
@@ -159,6 +160,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         result = db.insert_event(sample_event)
 
@@ -176,6 +178,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         with pytest.raises(DatabaseWriteError, match="Failed to write event to database"):
             db.insert_event(sample_event)
@@ -201,6 +204,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         events = [sample_event]
         successful, failed = db.insert_events(events)
@@ -223,6 +227,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         events = [sample_event, sample_event]  # Same event twice
         successful, failed = db.insert_events(events)
@@ -252,6 +257,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         events = [sample_event]
         with pytest.raises(DatabaseWriteError, match="Failed to write events batch to database"):
@@ -282,6 +288,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         result = db.get_event_by_id(sample_event.event_id)
 
@@ -304,6 +311,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         result = db.get_event_by_id("nonexistent_id")
 
@@ -332,6 +340,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         start = datetime(2025, 11, 9, 0, 0, 0)
         end = datetime(2025, 11, 10, 0, 0, 0)
@@ -364,6 +373,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         results = db.get_recent_events(limit=10)
 
@@ -381,6 +391,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         count = db.count_events()
 
@@ -410,6 +421,7 @@ class TestDatabaseManager:
 
         db = DatabaseManager(temp_db_path)
         db.conn = mock_conn
+        db._initialized = True
 
         results = db.get_events_by_camera("camera_1", limit=50)
 

@@ -186,7 +186,9 @@ class TestOllamaClient:
         assert call_args[1]['model'] == client.config.ollama_model
         assert 'images' in call_args[1]
         assert len(call_args[1]['images']) == 1
-        assert call_args[1]['images'][0].startswith('data:image/jpeg;base64,')
+        # Ollama expects just base64 data, not data URL format
+        assert isinstance(call_args[1]['images'][0], str)
+        assert len(call_args[1]['images'][0]) > 100  # Should be substantial base64 data
 
         # Verify success log message includes timing
         assert "✓ LLM description generated" in caplog.text

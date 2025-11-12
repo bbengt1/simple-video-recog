@@ -1,9 +1,10 @@
 # WebSocket endpoint for real-time event streaming
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from datetime import datetime
-import logging
 import json
+import logging
+from datetime import datetime
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from api.websocket import WebSocketManager
 

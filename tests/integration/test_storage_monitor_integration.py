@@ -212,6 +212,7 @@ class TestStorageMonitorIntegration:
         frame_sampler = MagicMock()
         coreml_detector = MagicMock()
         event_deduplicator = MagicMock()
+        event_manager = MagicMock()
         ollama_client = MagicMock()
         image_annotator = MagicMock()
         database_manager = MagicMock()
@@ -225,6 +226,7 @@ class TestStorageMonitorIntegration:
             frame_sampler=frame_sampler,
             coreml_detector=coreml_detector,
             event_deduplicator=event_deduplicator,
+            event_manager=event_manager,
             ollama_client=ollama_client,
             image_annotator=image_annotator,
             database_manager=database_manager,

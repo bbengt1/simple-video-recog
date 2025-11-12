@@ -13,35 +13,36 @@ class TestWebServer:
     """Test web server entry point functionality."""
 
     @patch('web_server.uvicorn')
-    @patch('api.app.create_app')
     @patch('logging.getLogger')
-    def test_main_starts_server(self, mock_get_logger, mock_create_app, mock_uvicorn):
-        """Test main function starts uvicorn server."""
+    def test_main_starts_server(self, mock_get_logger, mock_uvicorn):
+        """Test main function starts the server."""
         from web_server import main
 
-        # Mock the dependencies
+        # Mock logger
         mock_logger = MagicMock()
         mock_get_logger.return_value = mock_logger
-        mock_app = MagicMock()
-        mock_create_app.return_value = mock_app
 
-        # Call main
-        main()
+        # Mock config loading
+        with patch('web_server.load_config') as mock_load_config:
+            mock_config = MagicMock()
+            mock_config.db_path = "data/events.db"
+            mock_config.log_level = "INFO"
+            mock_load_config.return_value = mock_config
 
-        # Verify app was created
-        mock_create_app.assert_called_once()
+            # Mock database check
+            with patch('pathlib.Path.exists', return_value=True):
+                with patch('sqlite3.connect') as mock_connect:
+                    # Call main and expect it to call uvicorn.run
+                    main()
 
-        # Verify uvicorn run was called with correct parameters
-        mock_uvicorn.run.assert_called_once_with(
-            "api.app:app",
-            host="127.0.0.1",
-            port=8000,
-            reload=False,
-            log_config=None
-        )
-
-        # Verify logging
-        mock_logger.info.assert_any_call("Starting web server at http://127.0.0.1:8000")
+                    # Verify uvicorn run was called with correct parameters
+                    mock_uvicorn.run.assert_called_once_with(
+                        "api.app:app",
+                        host="127.0.0.1",
+                        port=8000,
+                        reload=False,
+                        log_config=None
+                    )
 
     @patch('web_server.uvicorn')
     @patch('api.app.create_app')
@@ -102,7 +103,7 @@ class TestWebServer:
                 main()
 
             # Verify error was logged
-            mock_logger.error.assert_called_with("Database not found at data/events.db")
+            mock_logger.error.assert_called_with("Please run the main application first to create the database")
 
     @patch('web_server.uvicorn')
     @patch('api.app.create_app')

@@ -7,10 +7,11 @@ atomic event insertion with proper error handling.
 
 import json
 import sqlite3
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from core.events import Event
 from core.exceptions import DatabaseError, DatabaseWriteError
@@ -33,8 +34,33 @@ class DatabaseManager:
             db_path: Path to SQLite database file
         """
         self.db_path = db_path
-        self.conn: Optional[sqlite3.Connection] = None
+        self.conn = None  # Main database connection (can be mocked in tests)
+        self._initialized = False  # Track if database schema has been initialized
+        self._local = threading.local()  # Thread-local storage for connections
+        self._lock = threading.RLock()  # Reentrant lock for thread safety
         self.logger = get_logger(__name__)
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get thread-local database connection.
+
+        Creates a new connection for each thread to ensure thread safety.
+        Falls back to the main connection if it exists and we're in the main thread.
+
+        Returns:
+            SQLite connection for the current thread
+        """
+        # If we have a main connection and it's the main thread, use it
+        if hasattr(self, 'conn') and self.conn is not None:
+            import threading
+            main_thread = threading.main_thread()
+            if threading.current_thread() == main_thread:
+                return self.conn
+
+        # Otherwise, use thread-local connection
+        if not hasattr(self._local, 'conn') or self._local.conn is None:
+            self._local.conn = sqlite3.connect(self.db_path)
+            self._local.conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign keys
+        return self._local.conn
 
     def init_database(self) -> None:
         """Initialize database schema and apply migrations.
@@ -50,9 +76,8 @@ class DatabaseManager:
             db_dir = Path(self.db_path).parent
             db_dir.mkdir(parents=True, exist_ok=True)
 
-            # Connect to database
-            self.conn = sqlite3.connect(self.db_path)
-            self.conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign keys
+            # Get thread-local connection (creates if needed)
+            conn = self._get_connection()
 
             # Check current schema version
             current_version = self._get_schema_version()
@@ -62,6 +87,8 @@ class DatabaseManager:
                 self.logger.info("Database initialized with schema version 1")
             else:
                 self.logger.info(f"Database schema version {current_version} is up to date")
+
+            self._initialized = True
 
         except sqlite3.Error as e:
             self.logger.error(f"Database initialization failed: {e}")
@@ -76,17 +103,16 @@ class DatabaseManager:
         Returns:
             Current schema version, or 0 if schema_version table doesn't exist
         """
-        if self.conn is None:
-            raise DatabaseError("Database not initialized. Call init_database() first.")
-
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT MAX(version) FROM schema_version")
-            result = cursor.fetchone()
-            return result[0] if result and result[0] is not None else 0
-        except sqlite3.Error:
-            # schema_version table doesn't exist yet
-            return 0
+        with self._lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT MAX(version) FROM schema_version")
+                result = cursor.fetchone()
+                return result[0] if result and result[0] is not None else 0
+            except sqlite3.Error:
+                # schema_version table doesn't exist yet
+                return 0
 
     def _apply_migration(self, migration_file: str) -> None:
         """Apply a database migration.
@@ -97,9 +123,6 @@ class DatabaseManager:
         Raises:
             DatabaseError: If migration fails
         """
-        if self.conn is None:
-            raise DatabaseError("Database not initialized. Call init_database() first.")
-
         migration_path = Path(__file__).parent.parent / "migrations" / migration_file
 
         if not migration_path.exists():
@@ -109,14 +132,20 @@ class DatabaseManager:
             with open(migration_path, "r") as f:
                 sql = f.read()
 
-            # Execute migration within transaction
-            self.conn.executescript(sql)
-            self.conn.commit()
+            # Execute migration within transaction using thread-local connection
+            conn = self._get_connection()
+            conn.executescript(sql)
+            conn.commit()
 
             self.logger.info(f"Applied migration: {migration_file}")
 
         except sqlite3.Error as e:
-            self.conn.rollback()
+            # Rollback using thread-local connection
+            try:
+                conn = self._get_connection()
+                conn.rollback()
+            except Exception:
+                pass  # Ignore rollback errors
             self.logger.error(f"Migration {migration_file} failed: {e}")
             raise DatabaseError(f"Migration {migration_file} failed: {e}") from e
 
@@ -130,62 +159,65 @@ class DatabaseManager:
             True if inserted successfully, False if duplicate
 
         Raises:
+            DatabaseError: If database not initialized
             DatabaseWriteError: If write operation fails
         """
-        if self.conn is None:
+        if not self._initialized:
             raise DatabaseError("Database not initialized. Call init_database() first.")
 
-        start_time = time.time()
+        with self._lock:
+            conn = self._get_connection()
+            start_time = time.time()
 
-        try:
-            # Serialize detected_objects to JSON
-            detected_objects_json = json.dumps([obj.model_dump() for obj in event.detected_objects])
+            try:
+                # Serialize detected_objects to JSON
+                detected_objects_json = json.dumps([obj.model_dump() for obj in event.detected_objects])
 
-            # Prepare data for insertion
-            data = (
-                event.event_id,
-                event.timestamp.isoformat(),
-                event.camera_id,
-                event.motion_confidence,
-                detected_objects_json,
-                event.llm_description,
-                event.image_path,
-                event.json_log_path,
-            )
-
-            cursor = self.conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO events (
-                    event_id, timestamp, camera_id, motion_confidence,
-                    detected_objects, llm_description, image_path, json_log_path
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                data,
-            )
-
-            self.conn.commit()
-
-            # Performance monitoring
-            elapsed_ms = (time.time() - start_time) * 1000
-            if elapsed_ms > 10:
-                self.logger.warning(
-                    f"Event insertion exceeded 10ms threshold: {elapsed_ms:.2f}ms for event {event.event_id}"
+                # Prepare data for insertion
+                data = (
+                    event.event_id,
+                    event.timestamp.isoformat(),
+                    event.camera_id,
+                    event.motion_confidence,
+                    detected_objects_json,
+                    event.llm_description,
+                    event.image_path,
+                    event.json_log_path,
                 )
-            else:
-                self.logger.debug(f"Inserted event: {event.event_id} in {elapsed_ms:.2f}ms")
 
-            return True
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO events (
+                        event_id, timestamp, camera_id, motion_confidence,
+                        detected_objects, llm_description, image_path, json_log_path
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    data,
+                )
 
-        except sqlite3.IntegrityError:
-            # UNIQUE constraint violation (duplicate event_id)
-            self.conn.rollback()
-            self.logger.warning(f"Duplicate event not inserted: {event.event_id}")
-            return False
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            self.logger.error(f"Database write failed: {e}")
-            raise DatabaseWriteError(f"Failed to write event to database: {e}") from e
+                conn.commit()
+
+                # Performance monitoring
+                elapsed_ms = (time.time() - start_time) * 1000
+                if elapsed_ms > 10:
+                    self.logger.warning(
+                        f"Event insertion exceeded 10ms threshold: {elapsed_ms:.2f}ms for event {event.event_id}"
+                    )
+                else:
+                    self.logger.debug(f"Inserted event: {event.event_id} in {elapsed_ms:.2f}ms")
+
+                return True
+
+            except sqlite3.IntegrityError:
+                # UNIQUE constraint violation (duplicate event_id)
+                conn.rollback()
+                self.logger.warning(f"Duplicate event not inserted: {event.event_id}")
+                return False
+            except sqlite3.Error as e:
+                conn.rollback()
+                self.logger.error(f"Database write failed: {e}")
+                raise DatabaseWriteError(f"Failed to write event to database: {e}") from e
 
     def insert_events(self, events: list[Event]) -> tuple[int, int]:
         """Insert multiple events into database.
@@ -202,71 +234,72 @@ class DatabaseManager:
         if not events:
             return 0, 0
 
-        if self.conn is None:
+        if not self._initialized:
             raise DatabaseError("Database not initialized. Call init_database() first.")
 
-        successful = 0
-        failed = 0
+        with self._lock:
+            successful = 0
+            failed = 0
 
-        start_time = time.time()
+            start_time = time.time()
 
-        try:
-            cursor = self.conn.cursor()
+            try:
+                cursor = self._get_connection().cursor()
 
-            for event in events:
-                try:
-                    # Serialize detected_objects to JSON
-                    detected_objects_json = json.dumps(
-                        [obj.model_dump() for obj in event.detected_objects]
-                    )
+                for event in events:
+                    try:
+                        # Serialize detected_objects to JSON
+                        detected_objects_json = json.dumps(
+                            [obj.model_dump() for obj in event.detected_objects]
+                        )
 
-                    # Prepare data for insertion
-                    data = (
-                        event.event_id,
-                        event.timestamp.isoformat(),
-                        event.camera_id,
-                        event.motion_confidence,
-                        detected_objects_json,
-                        event.llm_description,
-                        event.image_path,
-                        event.json_log_path,
-                    )
+                        # Prepare data for insertion
+                        data = (
+                            event.event_id,
+                            event.timestamp.isoformat(),
+                            event.camera_id,
+                            event.motion_confidence,
+                            detected_objects_json,
+                            event.llm_description,
+                            event.image_path,
+                            event.json_log_path,
+                        )
 
-                    cursor.execute(
-                        """
-                        INSERT INTO events (
-                            event_id, timestamp, camera_id, motion_confidence,
-                            detected_objects, llm_description, image_path, json_log_path
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                        data,
-                    )
+                        cursor.execute(
+                            """
+                            INSERT INTO events (
+                                event_id, timestamp, camera_id, motion_confidence,
+                                detected_objects, llm_description, image_path, json_log_path
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                            data,
+                        )
 
-                    successful += 1
+                        successful += 1
 
-                except sqlite3.IntegrityError:
-                    # UNIQUE constraint violation (duplicate event_id)
-                    self.logger.warning(f"Duplicate event not inserted: {event.event_id}")
-                    failed += 1
-                except sqlite3.Error as e:
-                    self.logger.error(f"Failed to insert event {event.event_id}: {e}")
-                    failed += 1
+                    except sqlite3.IntegrityError:
+                        # UNIQUE constraint violation (duplicate event_id)
+                        self.logger.warning(f"Duplicate event not inserted: {event.event_id}")
+                        failed += 1
+                    except sqlite3.Error as e:
+                        self.logger.error(f"Failed to insert event {event.event_id}: {e}")
+                        failed += 1
 
-            self.conn.commit()
+                self._get_connection().commit()
 
-            # Performance monitoring
-            elapsed_ms = (time.time() - start_time) * 1000
-            total_events = len(events)
-            self.logger.info(
-                f"Batch inserted {successful}/{total_events} events in {elapsed_ms:.2f}ms ({failed} failed)"
-            )
+                # Performance monitoring
+                elapsed_ms = (time.time() - start_time) * 1000
+                total_events = len(events)
+                self.logger.info(
+                    f"Batch inserted {successful}/{total_events} events in {elapsed_ms:.2f}ms ({failed} failed)"
+                )
 
-            return successful, failed
+                return successful, failed
 
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            self.logger.error(f"Database batch write failed: {e}")
-            raise DatabaseWriteError(f"Failed to write events batch to database: {e}") from e
+            except sqlite3.Error as e:
+                self._get_connection().rollback()
+                self.logger.error(f"Database batch write failed: {e}")
+                raise DatabaseWriteError(f"Failed to write events batch to database: {e}") from e
 
     def get_event_by_id(self, event_id: str) -> Optional[Event]:
         """Retrieve a single event by its event_id.
@@ -280,49 +313,50 @@ class DatabaseManager:
         Raises:
             DatabaseError: If database query fails
         """
-        if self.conn is None:
+        if not self._initialized:
             raise DatabaseError("Database not initialized. Call init_database() first.")
 
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(
-                """
-                SELECT event_id, timestamp, camera_id, motion_confidence,
-                       detected_objects, llm_description, image_path, json_log_path
-                FROM events
-                WHERE event_id = ?
-            """,
-                (event_id,),
-            )
+        with self._lock:
+            try:
+                cursor = self._get_connection().cursor()
+                cursor.execute(
+                    """
+                    SELECT event_id, timestamp, camera_id, motion_confidence,
+                           detected_objects, llm_description, image_path, json_log_path
+                    FROM events
+                    WHERE event_id = ?
+                """,
+                    (event_id,),
+                )
 
-            row = cursor.fetchone()
-            if row is None:
-                return None
+                row = cursor.fetchone()
+                if row is None:
+                    return None
 
-            # Deserialize detected_objects from JSON
-            detected_objects_json = row[4]
-            detected_objects = [DetectedObject(**obj) for obj in json.loads(detected_objects_json)]
+                # Deserialize detected_objects from JSON
+                detected_objects_json = row[4]
+                detected_objects = [DetectedObject(**obj) for obj in json.loads(detected_objects_json)]
 
-            # Parse timestamp
-            timestamp = datetime.fromisoformat(row[1])
+                # Parse timestamp
+                timestamp = datetime.fromisoformat(row[1])
 
-            # Create Event object
-            event = Event(
-                event_id=row[0],
-                timestamp=timestamp,
-                camera_id=row[2],
-                motion_confidence=row[3],
-                detected_objects=detected_objects,
-                llm_description=row[5],
-                image_path=row[6],
-                json_log_path=row[7],
-            )
+                # Create Event object
+                event = Event(
+                    event_id=row[0],
+                    timestamp=timestamp,
+                    camera_id=row[2],
+                    motion_confidence=row[3],
+                    detected_objects=detected_objects,
+                    llm_description=row[5],
+                    image_path=row[6],
+                    json_log_path=row[7],
+                )
 
-            return event
+                return event
 
-        except sqlite3.Error as e:
-            self.logger.error(f"Database query failed for event_id {event_id}: {e}")
-            raise DatabaseError(f"Failed to query event by ID: {e}") from e
+            except sqlite3.Error as e:
+                self.logger.error(f"Database query failed for event_id {event_id}: {e}")
+                raise DatabaseError(f"Failed to query event by ID: {e}") from e
 
     def get_events_by_timerange(
         self, start: datetime, end: datetime, offset: int = 0, limit: Optional[int] = None
@@ -341,13 +375,13 @@ class DatabaseManager:
         Raises:
             DatabaseError: If database query fails
         """
-        if self.conn is None:
+        if not self._initialized:
             raise DatabaseError("Database not initialized. Call init_database() first.")
 
         start_time = time.time()
 
         try:
-            cursor = self.conn.cursor()
+            cursor = self._get_connection().cursor()
 
             # Build query with optional limit
             query = """
@@ -369,7 +403,7 @@ class DatabaseManager:
                 params.append(offset)
 
             cursor.execute(query, params)
-            rows = cursor.fetchall()
+            rows: List[Any] = cursor.fetchall()
 
             events = []
             for row in rows:
@@ -424,66 +458,67 @@ class DatabaseManager:
         Raises:
             DatabaseError: If database query fails
         """
-        if self.conn is None:
+        if not self._initialized:
             raise DatabaseError("Database not initialized. Call init_database() first.")
 
-        start_time = time.time()
+        with self._lock:
+            start_time = time.time()
 
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(
-                """
-                SELECT event_id, timestamp, camera_id, motion_confidence,
-                       detected_objects, llm_description, image_path, json_log_path
-                FROM events
-                ORDER BY timestamp DESC
-                LIMIT ?
-            """,
-                (limit,),
-            )
-
-            rows = cursor.fetchall()
-
-            events = []
-            for row in rows:
-                # Deserialize detected_objects from JSON
-                detected_objects_json = row[4]
-                detected_objects = [
-                    DetectedObject(**obj) for obj in json.loads(detected_objects_json)
-                ]
-
-                # Parse timestamp
-                timestamp = datetime.fromisoformat(row[1])
-
-                # Create Event object
-                event = Event(
-                    event_id=row[0],
-                    timestamp=timestamp,
-                    camera_id=row[2],
-                    motion_confidence=row[3],
-                    detected_objects=detected_objects,
-                    llm_description=row[5],
-                    image_path=row[6],
-                    json_log_path=row[7],
-                )
-                events.append(event)
-
-            # Performance monitoring
-            elapsed_ms = (time.time() - start_time) * 1000
-            if elapsed_ms > 50:
-                self.logger.warning(
-                    f"Recent events query exceeded 50ms threshold: {elapsed_ms:.2f}ms for {len(events)} results"
-                )
-            else:
-                self.logger.debug(
-                    f"Recent events query returned {len(events)} events in {elapsed_ms:.2f}ms"
+            try:
+                cursor = self._get_connection().cursor()
+                cursor.execute(
+                    """
+                    SELECT event_id, timestamp, camera_id, motion_confidence,
+                           detected_objects, llm_description, image_path, json_log_path
+                    FROM events
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """,
+                    (limit,),
                 )
 
-            return events
+                rows: List[Any] = cursor.fetchall()
 
-        except sqlite3.Error as e:
-            self.logger.error(f"Database recent events query failed: {e}")
-            raise DatabaseError(f"Failed to query recent events: {e}") from e
+                events = []
+                for row in rows:
+                    # Deserialize detected_objects from JSON
+                    detected_objects_json = row[4]
+                    detected_objects = [
+                        DetectedObject(**obj) for obj in json.loads(detected_objects_json)
+                    ]
+
+                    # Parse timestamp
+                    timestamp = datetime.fromisoformat(row[1])
+
+                    # Create Event object
+                    event = Event(
+                        event_id=row[0],
+                        timestamp=timestamp,
+                        camera_id=row[2],
+                        motion_confidence=row[3],
+                        detected_objects=detected_objects,
+                        llm_description=row[5],
+                        image_path=row[6],
+                        json_log_path=row[7],
+                    )
+                    events.append(event)
+
+                # Performance monitoring
+                elapsed_ms = (time.time() - start_time) * 1000
+                if elapsed_ms > 50:
+                    self.logger.warning(
+                        f"Recent events query exceeded 50ms threshold: {elapsed_ms:.2f}ms for {len(events)} results"
+                    )
+                else:
+                    self.logger.debug(
+                        f"Recent events query returned {len(events)} events in {elapsed_ms:.2f}ms"
+                    )
+
+                return events
+
+            except sqlite3.Error as e:
+                self.logger.error(f"Database recent events query failed: {e}")
+                raise DatabaseError(f"Failed to query recent events: {e}") from e
 
     def count_events(self) -> int:
         """Count total number of events in database.
@@ -494,18 +529,19 @@ class DatabaseManager:
         Raises:
             DatabaseError: If database query fails
         """
-        if self.conn is None:
+        if not self._initialized:
             raise DatabaseError("Database not initialized. Call init_database() first.")
 
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM events")
-            result = cursor.fetchone()
-            return result[0] if result else 0
+        with self._lock:
+            try:
+                cursor = self._get_connection().cursor()
+                cursor.execute("SELECT COUNT(*) FROM events")
+                result = cursor.fetchone()
+                return result[0] if result else 0
 
-        except sqlite3.Error as e:
-            self.logger.error(f"Database count query failed: {e}")
-            raise DatabaseError(f"Failed to count events: {e}") from e
+            except sqlite3.Error as e:
+                self.logger.error(f"Database count query failed: {e}")
+                raise DatabaseError(f"Failed to count events: {e}") from e
 
     def get_events_by_camera(self, camera_id: str, limit: int = 100) -> list[Event]:
         """Retrieve recent events for a specific camera.
@@ -520,71 +556,72 @@ class DatabaseManager:
         Raises:
             DatabaseError: If database query fails
         """
-        if self.conn is None:
+        if not self._initialized:
             raise DatabaseError("Database not initialized. Call init_database() first.")
 
-        start_time = time.time()
+        with self._lock:
+            start_time = time.time()
 
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(
-                """
-                SELECT event_id, timestamp, camera_id, motion_confidence,
-                       detected_objects, llm_description, image_path, json_log_path
-                FROM events
-                WHERE camera_id = ?
-                ORDER BY timestamp DESC
-                LIMIT ?
-            """,
-                (camera_id, limit),
-            )
-
-            rows = cursor.fetchall()
-
-            events = []
-            for row in rows:
-                # Deserialize detected_objects from JSON
-                detected_objects_json = row[4]
-                detected_objects = [
-                    DetectedObject(**obj) for obj in json.loads(detected_objects_json)
-                ]
-
-                # Parse timestamp
-                timestamp = datetime.fromisoformat(row[1])
-
-                # Create Event object
-                event = Event(
-                    event_id=row[0],
-                    timestamp=timestamp,
-                    camera_id=row[2],
-                    motion_confidence=row[3],
-                    detected_objects=detected_objects,
-                    llm_description=row[5],
-                    image_path=row[6],
-                    json_log_path=row[7],
-                )
-                events.append(event)
-
-            # Performance monitoring
-            elapsed_ms = (time.time() - start_time) * 1000
-            if elapsed_ms > 50:
-                self.logger.warning(
-                    f"Camera events query exceeded 50ms threshold: {elapsed_ms:.2f}ms for {len(events)} results"
-                )
-            else:
-                self.logger.debug(
-                    f"Camera events query returned {len(events)} events in {elapsed_ms:.2f}ms"
+            try:
+                cursor = self._get_connection().cursor()
+                cursor.execute(
+                    """
+                    SELECT event_id, timestamp, camera_id, motion_confidence,
+                           detected_objects, llm_description, image_path, json_log_path
+                    FROM events
+                    WHERE camera_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """,
+                    (camera_id, limit),
                 )
 
-            return events
+                rows: List[Any] = cursor.fetchall()
 
-        except sqlite3.Error as e:
-            self.logger.error(f"Database camera events query failed for camera {camera_id}: {e}")
-            raise DatabaseError(f"Failed to query events by camera: {e}") from e
+                events = []
+                for row in rows:
+                    # Deserialize detected_objects from JSON
+                    detected_objects_json = row[4]
+                    detected_objects = [
+                        DetectedObject(**obj) for obj in json.loads(detected_objects_json)
+                    ]
+
+                    # Parse timestamp
+                    timestamp = datetime.fromisoformat(row[1])
+
+                    # Create Event object
+                    event = Event(
+                        event_id=row[0],
+                        timestamp=timestamp,
+                        camera_id=row[2],
+                        motion_confidence=row[3],
+                        detected_objects=detected_objects,
+                        llm_description=row[5],
+                        image_path=row[6],
+                        json_log_path=row[7],
+                    )
+                    events.append(event)
+
+                # Performance monitoring
+                elapsed_ms = (time.time() - start_time) * 1000
+                if elapsed_ms > 50:
+                    self.logger.warning(
+                        f"Camera events query exceeded 50ms threshold: {elapsed_ms:.2f}ms for {len(events)} results"
+                    )
+                else:
+                    self.logger.debug(
+                        f"Camera events query returned {len(events)} events in {elapsed_ms:.2f}ms"
+                    )
+
+                return events
+
+            except sqlite3.Error as e:
+                self.logger.error(f"Database camera events query failed for camera {camera_id}: {e}")
+                raise DatabaseError(f"Failed to query events by camera: {e}") from e
 
     def close(self) -> None:
         """Close database connection."""
         if self.conn:
-            self.conn.close()
+            self._get_connection().close()
             self.conn = None
             self.logger.info("Database connection closed")

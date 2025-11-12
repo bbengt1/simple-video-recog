@@ -105,21 +105,25 @@ class CoreMLDetector:
 
             # Create dummy frame based on input shape
             if input_shape and len(input_shape) >= 3:
-                # Assume shape is (height, width, channels) or (channels, height, width)
+                # Assume shape is (channels, height, width) as expected by CoreML
                 if len(input_shape) == 3:
-                    # Try (height, width, channels) first
+                    # Use CHW format
                     dummy_frame = np.random.rand(*input_shape).astype(np.float32)
                 else:
-                    # Fallback to common shape
-                    dummy_frame = np.random.rand(416, 416, 3).astype(np.float32)
+                    # Fallback to common shape in CHW format
+                    dummy_frame = np.random.rand(3, 416, 416).astype(np.float32)
             else:
-                # Default dummy frame for common object detection models
-                dummy_frame = np.random.rand(416, 416, 3).astype(np.float32)
+                # Default dummy frame for common object detection models (CHW format)
+                dummy_frame = np.random.rand(3, 416, 416).astype(np.float32)
 
             # Run warm-up inference (skip if CoreML framework unavailable)
             try:
                 # Test if CoreML framework is available by attempting a minimal prediction
-                _ = self.model.predict({'input': dummy_frame})
+                _ = self.model.predict({
+                    'image': dummy_frame,
+                    'confidenceThreshold': self.config.min_object_confidence,
+                    'iouThreshold': 0.5
+                })
                 warmup_time = time.time() - start_time
                 self.logger.info(f"Model warm-up completed in {warmup_time:.3f}s")
                 self.model_metadata['warmup_time'] = warmup_time
@@ -171,8 +175,13 @@ class CoreMLDetector:
             # Preprocess frame
             processed_frame = self._preprocess_frame(frame)
 
-            # Run inference
-            raw_outputs = self.model.predict({'input': processed_frame})
+            # Run inference with correct input names
+            # YOLOv3-tiny model expects: image, confidenceThreshold, iouThreshold
+            raw_outputs = self.model.predict({
+                'image': processed_frame,
+                'confidenceThreshold': self.config.min_object_confidence,
+                'iouThreshold': 0.5  # Standard IoU threshold
+            })
 
             # Post-process results
             detections = self._postprocess_detections(raw_outputs, frame.shape)
@@ -237,7 +246,10 @@ class CoreMLDetector:
         # Convert to float32 and normalize to [0, 1]
         normalized_frame = resized_frame.astype(np.float32) / 255.0
 
-        return normalized_frame
+        # Transpose to CHW format (channels, height, width) as expected by CoreML
+        chw_frame = np.transpose(normalized_frame, (2, 0, 1))
+
+        return chw_frame
 
     def _postprocess_detections(self, raw_outputs: dict, original_frame_shape: tuple) -> List[DetectedObject]:
         """Post-process raw model outputs into DetectedObject instances.

@@ -197,7 +197,7 @@ Once you've completed the setup steps above, you can start the video recognition
 # Activate conda environment
 conda activate video-recog
 
-# Start the system
+# Start the system (split-screen UI enabled by default)
 python main.py --config config/config.yaml
 ```
 
@@ -206,7 +206,12 @@ The system will:
 2. Perform startup health checks
 3. Connect to your RTSP camera
 4. Begin monitoring for motion events
-5. Log detected events to console
+5. Display real-time metrics in the top panel and logs in the bottom panel
+
+**Split-Screen Interface:**
+- **Top Panel:** 📊 Live system metrics (frames processed, events detected, performance)
+- **Bottom Panel:** 📝 Real-time system logs and status messages
+- **Traditional Console:** Use `--no-split-screen` flag for old-style output
 
 **To stop the system:** Press `Ctrl+C` for graceful shutdown with session summary.
 

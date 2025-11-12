@@ -40,6 +40,7 @@ from core.version import format_version_output, get_version_info
 from core.dry_run import DryRunValidator
 from core.signals import SignalHandler
 from core.storage_monitor import StorageMonitor
+from core.split_screen_ui import SplitScreenUI
 from apple_platform.coreml_detector import CoreMLDetector
 from integrations.rtsp_client import RTSPCameraClient
 from integrations.ollama import OllamaClient
@@ -66,7 +67,8 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py --config config/config.yaml              # Run with config file
+  python main.py --config config/config.yaml              # Run with split-screen UI (default)
+  python main.py --config config/config.yaml --no-split-screen  # Run with traditional console output
   python main.py --config cameras/front-door.yaml --dry-run  # Validate configuration
   python main.py --version                                 # Show version information
   python main.py --help                                    # Show this help message
@@ -114,6 +116,12 @@ Exit codes:
         "--metrics-interval",
         type=int,
         help="Override metrics display interval in seconds (default: 60)"
+    )
+
+    parser.add_argument(
+        "--no-split-screen",
+        action="store_true",
+        help="Disable split-screen mode (use traditional console output)"
     )
 
     return parser.parse_args()
@@ -339,6 +347,15 @@ def main():
             websocket_manager=websocket_manager
         )
 
+        # Initialize split-screen UI by default (unless disabled)
+        split_screen_ui = None
+        metrics_collector = None
+        if not args.no_split_screen:
+            from core.metrics import MetricsCollector
+            metrics_collector = MetricsCollector(config)
+            split_screen_ui = SplitScreenUI(metrics_collector, config)
+            logger.info("Split-screen mode enabled (default)")
+
         # Initialize and start processing pipeline
         pipeline = ProcessingPipeline(
             rtsp_client=rtsp_client,
@@ -352,10 +369,21 @@ def main():
             database_manager=database_manager,
             signal_handler=signal_handler,
             storage_monitor=storage_monitor,
-            config=config
+            config=config,
+            metrics_collector=metrics_collector
         )
 
+        # Log mode information
+        if args.no_split_screen:
+            logger.info("Console mode enabled (traditional output)")
+        else:
+            logger.info("Split-screen mode enabled (metrics on top, logs on bottom)")
+
         logger.info("System initialization complete. Starting processing pipeline...")
+
+        # Start split-screen UI if enabled
+        if split_screen_ui:
+            split_screen_ui.start()
 
         # Record session start time
         import time
@@ -408,6 +436,10 @@ def main():
 
         # Pipeline completed (shutdown signal received) - perform graceful shutdown
         logger.info("Processing pipeline stopped. Performing graceful shutdown...")
+
+        # Stop split-screen UI if running
+        if split_screen_ui:
+            split_screen_ui.stop()
 
         # Implement shutdown timeout (10 seconds)
         import threading

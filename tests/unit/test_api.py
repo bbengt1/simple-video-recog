@@ -48,10 +48,10 @@ class TestFastAPIApp:
                 break
 
         assert cors_middleware is not None
-        assert cors_middleware.options['allow_origins'] == ['http://localhost:8000', 'http://127.0.0.1:8000']
-        assert cors_middleware.options['allow_credentials'] is True
-        assert cors_middleware.options['allow_methods'] == ['*']
-        assert cors_middleware.options['allow_headers'] == ['*']
+        assert cors_middleware.kwargs['allow_origins'] == ['http://localhost:8000', 'http://127.0.0.1:8000']
+        assert cors_middleware.kwargs['allow_credentials'] is True
+        assert cors_middleware.kwargs['allow_methods'] == ['*']
+        assert cors_middleware.kwargs['allow_headers'] == ['*']
 
     def test_create_app_static_files(self):
         """Test static file mounting."""

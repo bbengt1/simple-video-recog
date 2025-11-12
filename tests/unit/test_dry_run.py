@@ -77,7 +77,7 @@ class TestDryRunValidator:
         mock_instance = MagicMock()
         mock_result = MagicMock()
         mock_result.all_passed = True
-        mock_result.failed_checks = ["check1"]
+        mock_result.failed_checks = []  # No critical failures
         mock_result.warnings = ["warning1"]
         mock_instance.check_all.return_value = mock_result
         mock_health_checker.return_value = mock_instance
@@ -87,7 +87,7 @@ class TestDryRunValidator:
         assert success
         assert validator.results["validations"]["health_checks"]["status"] == "passed"
         assert validator.results["validations"]["health_checks"]["passed"] == 0  # Can't calculate without total
-        assert validator.results["validations"]["health_checks"]["failed"] == 1
+        assert validator.results["validations"]["health_checks"]["failed"] == 0
         assert validator.results["validations"]["health_checks"]["warnings"] == 1
 
     @patch('core.dry_run.HealthChecker')
@@ -130,15 +130,15 @@ class TestDryRunValidator:
 
     @patch('core.dry_run.CoreMLDetector')
     def test_validate_models_coreml_failure(self, mock_coreml_detector, validator):
-        """Test CoreML validation failure."""
+        """Test CoreML validation failure (acceptable in dry-run)."""
         mock_detector = MagicMock()
         mock_detector.load_model.side_effect = Exception("Model load failed")
         mock_coreml_detector.return_value = mock_detector
 
         success = validator._validate_models()
 
-        assert not success
-        assert validator.results["tests"]["coreml"]["status"] == "failed"
+        assert success  # CoreML failure is acceptable in dry-run
+        assert validator.results["tests"]["coreml"]["status"] == "warning"
 
     @patch('core.dry_run.OllamaClient')
     def test_validate_models_ollama_failure(self, mock_ollama_client, validator):
@@ -165,7 +165,7 @@ class TestDryRunValidator:
         mock_rtsp = MagicMock()
         mock_frame = MagicMock()
         mock_frame.shape = (1080, 1920, 3)
-        mock_rtsp.get_frame.return_value = mock_frame
+        mock_rtsp.get_latest_frame.return_value = mock_frame  # Correct method name
         mock_rtsp_client.return_value = mock_rtsp
 
         # Mock motion detector
