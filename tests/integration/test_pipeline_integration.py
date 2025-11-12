@@ -195,6 +195,8 @@ def test_processing_pipeline_event_persistence(sample_config):
         mock_sampler.should_process.return_value = True
 
         # Mock CoreML detection
+        mock_coreml.is_loaded = True
+        mock_coreml.model_metadata = {"coreml_available": True}
         from core.models import BoundingBox
         detected_objects = [
             DetectedObject(label="person", confidence=0.9, bbox=BoundingBox(x=50, y=50, width=100, height=200))

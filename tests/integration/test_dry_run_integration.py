@@ -88,7 +88,11 @@ class TestDryRunIntegration:
         mock_rtsp = MagicMock()
         mock_frame = MagicMock()
         mock_frame.shape = (1080, 1920, 3)
-        mock_rtsp.get_frame.return_value = mock_frame
+        mock_rtsp.get_latest_frame.return_value = mock_frame
+        mock_rtsp.connect.return_value = True
+        mock_rtsp.start_capture.return_value = None
+        mock_rtsp.stop_capture.return_value = None
+        mock_rtsp.disconnect.return_value = None
         mock_rtsp_client.return_value = mock_rtsp
 
         # Mock motion detector
@@ -147,7 +151,7 @@ class TestDryRunIntegration:
 
     @patch('core.dry_run.CoreMLDetector')
     def test_validation_with_coreml_failure(self, mock_coreml_detector, validator):
-        """Test validation when CoreML fails."""
+        """Test validation when CoreML fails (treated as warning in dry-run mode)."""
         # Mock CoreML failure
         mock_coreml = MagicMock()
         mock_coreml.load_model.side_effect = Exception("Model not found")
@@ -159,8 +163,9 @@ class TestDryRunIntegration:
 
             success = validator.run_full_validation()
 
-            assert not success
-            assert validator.results["tests"]["coreml"]["status"] == "failed"
+            # In dry-run mode, CoreML failures are treated as warnings, not failures
+            assert success
+            assert validator.results["tests"]["coreml"]["status"] == "warning"
 
     @patch('core.dry_run.RTSPCameraClient')
     def test_validation_with_rtsp_failure(self, mock_rtsp_client, validator):

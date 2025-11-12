@@ -49,7 +49,7 @@ class ApiClient {
   }
 
   async getMetrics() {
-    const url = `${this.baseUrl}/api/metrics`;
+    const url = `${this.baseUrl}/api/dashboard/metrics`;
 
     try {
       const response = await fetch(url);
@@ -61,6 +61,27 @@ class ApiClient {
       return await response.json();
     } catch (error) {
       console.error('[API] Metrics request failed:', error);
+      throw error;
+    }
+  }
+
+  async getEvent(eventId) {
+    const url = `${this.baseUrl}/api/events/${eventId}`;
+
+    console.log(`[API] GET ${url}`);
+
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('[API] Event received:', data);
+      return data;
+    } catch (error) {
+      console.error('[API] Request failed:', error);
       throw error;
     }
   }

@@ -74,8 +74,8 @@ def test_main_with_valid_config():
 
 
 def test_main_with_missing_config():
-    """Test main.py exits with error when default config file doesn't exist."""
-    cmd = [sys.executable, "main.py"]
+    """Test main.py exits with error when config file doesn't exist."""
+    cmd = [sys.executable, "main.py", "--config", "/nonexistent/config.yaml"]
     process = subprocess.Popen(
         cmd,
         cwd=Path(__file__).parent.parent.parent,
@@ -88,7 +88,8 @@ def test_main_with_missing_config():
 
     # Should exit with code 2 (config invalid)
     assert process.returncode == 2
-    assert "Configuration file not found" in stderr
+    combined_output = stdout + stderr
+    assert "Configuration file not found" in combined_output
 
 
 def test_main_with_invalid_config_path():

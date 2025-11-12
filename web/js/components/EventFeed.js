@@ -4,6 +4,7 @@
 import eventStore from '../state/EventStore.js';
 import { createEventCard } from './EventCard.js';
 import ApiClient from '../services/ApiClient.js';
+import EventModal from './EventModal.js';
 
 class EventFeed {
   constructor(containerSelector) {
@@ -18,6 +19,12 @@ class EventFeed {
     this.hasMore = true;
     this.offset = 0;
     this.scrollHandler = null;
+
+    // Initialize event modal
+    this.eventModal = new EventModal();
+
+    // Expose globally for error retry functionality
+    window.eventModal = this.eventModal;
 
     // Subscribe to state changes
     this.unsubscribe = eventStore.subscribe((state) => {
@@ -116,6 +123,17 @@ class EventFeed {
     // Render event cards
     events.forEach(event => {
       const card = createEventCard(event);
+
+      // Add click handler to open modal
+      card.addEventListener('click', () => {
+        this.eventModal.open(event.event_id);
+      });
+
+      // Make card focusable and indicate it's clickable
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', `View details for event ${event.event_id}`);
+
       this.container.appendChild(card);
     });
   }
@@ -204,6 +222,11 @@ class EventFeed {
     // Remove scroll handler
     if (this.scrollHandler && this.container) {
       this.container.removeEventListener('scroll', this.scrollHandler);
+    }
+
+    // Destroy event modal
+    if (this.eventModal) {
+      this.eventModal.destroy();
     }
   }
 }

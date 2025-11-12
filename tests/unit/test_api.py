@@ -88,7 +88,8 @@ class TestDependencies:
 
     def test_get_config_caching(self):
         """Test config is cached properly."""
-        with patch('api.dependencies.load_config') as mock_load:
+        with patch('api.dependencies.load_config') as mock_load, \
+             patch('api.dependencies._config', None):
             mock_config = Mock(spec=SystemConfig)
             mock_load.return_value = mock_config
 
