@@ -41,7 +41,7 @@ class TestCreateApp:
         assert cors_middleware is not None
 
         # Check CORS options
-        options = cors_middleware.kwargs
+        options = cors_middleware.kwargs  # type: ignore
         assert options["allow_origins"] == ["http://localhost:8000", "http://127.0.0.1:8000"]
         assert options["allow_credentials"] is True
         assert options["allow_methods"] == ["*"]
