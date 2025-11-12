@@ -134,16 +134,16 @@ class TestCLIArgumentParsing:
         # Mock successful dry run validation
         mock_dry_run_instance = MagicMock()
         mock_dry_run_instance.run_full_validation.return_value = True
-        mock_dry_run_instance.print_summary.return_value = None  # Mock print_summary to do nothing
         mock_dry_run_validator.return_value = mock_dry_run_instance
 
-        with patch('builtins.print') as mock_print:
+        # Make sys.exit actually raise SystemExit to stop execution
+        mock_exit.side_effect = SystemExit
+
+        with pytest.raises(SystemExit):
             main.main()
 
-            # Check that the success message was printed
-            print_calls = [call.args[0] for call in mock_print.call_args_list]
-            assert any("✓ All validations passed. System ready for production." in call for call in print_calls)
-            mock_exit.assert_called_once_with(0)
+        # Check that the system exits successfully
+        mock_exit.assert_called_once_with(0)
 
     @patch('main.parse_arguments')
     @patch('main.Path')

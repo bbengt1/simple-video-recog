@@ -121,7 +121,7 @@ class TestPlaintextEventLogger:
         """Test that slow operations trigger performance warnings."""
         with patch('pathlib.Path.mkdir'):
             with patch.object(logger, '_atomic_append', return_value=True):
-                with patch('time.time', side_effect=[0.0, 0.01]):  # 10ms delay
+                with patch('time.time', side_effect=[0.0, 0.01, 0.01]):  # 10ms delay
                     with patch.object(logger.logger, 'warning') as mock_warning:
                         logger.log_event(sample_event)
 

@@ -19,6 +19,7 @@ class TestRTSPCameraClient:
         """Test successful RTSP connection."""
         # Arrange
         mock_cap = Mock()
+        mock_cap.read.return_value = (True, Mock())  # Mock successful frame read
         mock_cap.isOpened.return_value = True
         mock_videocapture.return_value = mock_cap
 
@@ -32,13 +33,14 @@ class TestRTSPCameraClient:
         assert result is True
         assert client.cap is not None
         mock_videocapture.assert_called_once_with(config.camera_rtsp_url)
-        mock_cap.isOpened.assert_called_once()
+        assert mock_cap.isOpened.call_count == 2  # Called twice in connect method
 
     @patch("integrations.rtsp_client.cv2.VideoCapture")
     def test_connect_failure(self, mock_videocapture, sample_config):
         """Test RTSP connection failure raises RTSPConnectionError."""
         # Arrange
         mock_cap = Mock()
+        mock_cap.read.return_value = (True, Mock())  # Mock successful frame read
         mock_cap.isOpened.return_value = False
         mock_videocapture.return_value = mock_cap
 
@@ -58,6 +60,7 @@ class TestRTSPCameraClient:
         """Test disconnection releases VideoCapture and sets cap to None."""
         # Arrange
         mock_cap = Mock()
+        mock_cap.read.return_value = (True, Mock())  # Mock successful frame read
         mock_cap.isOpened.return_value = True
         mock_videocapture.return_value = mock_cap
 
@@ -78,6 +81,7 @@ class TestRTSPCameraClient:
         """Test get_frame returns numpy array when connected."""
         # Arrange
         mock_cap = Mock()
+        mock_cap.read.return_value = (True, Mock())  # Mock successful frame read
         mock_cap.isOpened.return_value = True
         mock_cap.read.return_value = (True, mock_frame)
         mock_videocapture.return_value = mock_cap
@@ -93,7 +97,7 @@ class TestRTSPCameraClient:
         assert frame is not None
         assert isinstance(frame, np.ndarray)
         assert frame.shape == (480, 640, 3)
-        mock_cap.read.assert_called_once()
+        assert mock_cap.read.call_count == 2  # Called once in connect(), once in get_frame()
 
     @patch("integrations.rtsp_client.cv2.VideoCapture")
     def test_get_frame_when_disconnected(self, mock_videocapture, sample_config):
@@ -120,8 +124,9 @@ class TestRTSPCameraClient:
         mock_cap = Mock()
         # First isOpened for initial connect, then for is_connected checks and reconnections
         mock_cap.isOpened.return_value = True
-        # First 3 reads fail (trigger reconnection), then succeed
+        # Initial connect read succeeds, then 3 reads fail (trigger reconnection), then succeed
         mock_cap.read.side_effect = [
+            (True, np.zeros((480, 640, 3), dtype=np.uint8)),  # Initial connect succeeds
             (False, None),  # First read fails
             (False, None),  # Second read fails
             (False, None),  # Third read fails
@@ -156,6 +161,7 @@ class TestRTSPCameraClient:
         """Test graceful handling when queue reaches 100 frames."""
         # Arrange
         mock_cap = Mock()
+        mock_cap.read.return_value = (True, Mock())  # Mock successful frame read
         mock_cap.isOpened.return_value = True
         mock_cap.read.return_value = (True, mock_frame)
         mock_videocapture.return_value = mock_cap
@@ -227,6 +233,7 @@ class TestRTSPCameraClient:
         """Test start_capture creates and starts daemon thread."""
         # Arrange
         mock_cap = Mock()
+        mock_cap.read.return_value = (True, Mock())  # Mock successful frame read
         mock_cap.isOpened.return_value = True
         mock_cap.read.return_value = (True, np.zeros((480, 640, 3), dtype=np.uint8))
         mock_videocapture.return_value = mock_cap
@@ -251,6 +258,7 @@ class TestRTSPCameraClient:
         """Test stop_capture stops the background thread."""
         # Arrange
         mock_cap = Mock()
+        mock_cap.read.return_value = (True, Mock())  # Mock successful frame read
         mock_cap.isOpened.return_value = True
         mock_cap.read.return_value = (True, np.zeros((480, 640, 3), dtype=np.uint8))
         mock_videocapture.return_value = mock_cap
